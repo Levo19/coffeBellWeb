@@ -11,9 +11,6 @@
 
 <body>
 
-    <!-- Setup Modal (First Run) -->
-    <!-- Setup Modal Removed -->
-
     <!-- Login Screen -->
     <div id="login-screen" class="login-wrapper" style="display: none;">
         <div class="login-box slide-up">
@@ -52,6 +49,10 @@
                 <div class="nav-item" onclick="showView('finance')">
                     <span class="material-icons">attach_money</span> Finanzas
                 </div>
+                <!-- Reports Link -->
+                <div class="nav-item" onclick="showView('reports')">
+                    <span class="material-icons">bar_chart</span> Reportes
+                </div>
                 <!-- Menu Manager Link -->
                 <div class="nav-item" onclick="showView('products')">
                     <span class="material-icons">restaurant</span> Carta / Recetas
@@ -69,7 +70,26 @@
                 </div>
             </div>
 
-            <!-- ... (Other Nav Groups Unchanged) ... -->
+            <div id="nav-mozo" class="nav-group" style="display:none">
+                <div class="nav-item" onclick="showView('waiter')">
+                    <span class="material-icons">restaurant_menu</span> Tomar Orden
+                </div>
+                <div class="nav-item" onclick="showView('tables')">
+                    <span class="material-icons">table_restaurant</span> Mis Mesas
+                </div>
+            </div>
+
+            <div id="nav-cocina" class="nav-group" style="display:none">
+                <div class="nav-item" onclick="showView('kitchen')">
+                    <span class="material-icons">soup_kitchen</span> Cocina
+                </div>
+            </div>
+
+            <div id="nav-caja" class="nav-group" style="display:none">
+                <div class="nav-item" onclick="showView('cashier')">
+                    <span class="material-icons">point_of_sale</span> Caja
+                </div>
+            </div>
 
             <div class="nav-footer">
                 <div class="nav-item" onclick="logout()">
@@ -100,7 +120,7 @@
                 </div>
             </div>
 
-            <!-- Finance View (Fixed) -->
+            <!-- Finance View -->
             <div id="view-finance" class="view-section">
                 <h2>Finanzas & Reportes</h2>
                 <div class="stat-grid" style="margin-bottom: 20px;">
@@ -136,11 +156,47 @@
                 </div>
             </div>
 
-            <!-- Products / Menu Manager View (New) -->
+            <!-- Advanced Reports View -->
+            <div id="view-reports" class="view-section">
+                <h2>Inteligencia de Negocio</h2>
+
+                <div class="stat-grid">
+                    <div class="card" style="grid-column: span 2;">
+                        <h3>Top 5 Productos Más Vendidos</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Cantidad Vendida</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-top-products"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="stat-grid" style="margin-top:20px;">
+                    <div class="card" style="grid-column: span 2;">
+                        <h3>Rendimiento del Personal (Ventas por Mozo)</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Mozo</th>
+                                    <th>Total Vendido</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-waiter-perf"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Products / Menu Manager View -->
             <div id="view-products" class="view-section">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                     <h2>Gestión de Carta y Recetas</h2>
-                    <!-- <button class="btn" onclick="addNewProduct()">+ Nuevo Producto</button> (Future) -->
+                    <!-- BUTTON ENABLED -->
+                    <button class="btn" onclick="addNewProductUi()">+ Nuevo Producto</button>
                 </div>
                 <div class="card">
                     <table class="table">
@@ -257,26 +313,6 @@
                         <tbody id="cashier-list">
                             <!-- Populated by JS -->
                         </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Inventory View -->
-            <div id="view-inventory" class="view-section">
-                <h2>Control de Insumos</h2>
-                <div class="card">
-                    <button class="btn" style="margin-bottom: 20px;" onclick="registerEntry()">+ Registrar
-                        Ingreso</button>
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Insumo</th>
-                                <th>Stock Actual</th>
-                                <th>Unidad</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody id="inventory-list"></tbody>
                     </table>
                 </div>
             </div>
