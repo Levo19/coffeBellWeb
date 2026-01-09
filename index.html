@@ -43,10 +43,20 @@
 
             <div id="nav-admin" class="nav-group">
                 <div class="nav-item active" onclick="showView('dashboard')">
-                    <span class="material-icons">dashboard</span> Dashboard
+                    <span class="material-icons">dashboard</span> General
                 </div>
                 <div class="nav-item" onclick="showView('inventory')">
-                    <span class="material-icons">inventory</span> Insumos
+                    <span class="material-icons">inventory</span> Stock
+                </div>
+                <!-- Admin Superpower: Access everything -->
+                <div class="nav-item" onclick="showView('tables')">
+                    <span class="material-icons">table_restaurant</span> Mesas
+                </div>
+                <div class="nav-item" onclick="showView('kitchen')">
+                    <span class="material-icons">soup_kitchen</span> Cocina
+                </div>
+                <div class="nav-item" onclick="showView('cashier')">
+                    <span class="material-icons">point_of_sale</span> Caja
                 </div>
             </div>
 
@@ -190,7 +200,8 @@
             <div id="view-inventory" class="view-section">
                 <h2>Control de Insumos</h2>
                 <div class="card">
-                    <button class="btn" style="margin-bottom: 20px;">+ Registrar Ingreso</button>
+                    <button class="btn" style="margin-bottom: 20px;" onclick="registerEntry()">+ Registrar
+                        Ingreso</button>
                     <table class="table">
                         <thead>
                             <tr>
