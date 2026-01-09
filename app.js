@@ -136,9 +136,82 @@ function showView(viewName) {
 
     if (viewName === 'inventory') loadInventory();
     if (viewName === 'finance') loadFinance();
+    if (viewName === 'products') loadAdminProducts();
 }
 
 // --- Features ---
+
+// Menu / Products Manager
+async function loadAdminProducts() {
+    const tbody = document.getElementById('admin-products-list');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="3">Cargando...</td></tr>';
+
+    const products = await apiCall('getProducts');
+    tbody.innerHTML = '';
+
+    if (!products || products.length === 0) return;
+
+    products.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                <div style="font-weight:bold">${p.name}</div>
+                <div style="font-size:12px; color:#888;">${p.category}</div>
+            </td>
+            <td>S/ ${p.price}</td>
+            <td>
+                <button class="btn btn-sm" onclick="updateProductPriceUi('${p.id}', '${p.price}')">Precio</button>
+                <button class="btn btn-sm btn-secondary" onclick="manageRecipeUi('${p.id}', '${p.name}')">Receta</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function updateProductPriceUi(id, current) {
+    const newPrice = prompt("Nuevo Precio (S/):", current);
+    if (newPrice && !isNaN(newPrice)) {
+        await apiCall('updateProductPrice', { productId: id, newPrice: newPrice }, 'POST');
+        loadAdminProducts();
+    }
+}
+
+async function manageRecipeUi(prodId, prodName) {
+    // 1. Fetch current recipe
+    const recipe = await apiCall('getRecipe', { productId: prodId });
+
+    let msg = `Receta para: ${prodName}\n----------------\n`;
+    if (recipe && recipe.length > 0) {
+        recipe.forEach(r => {
+            msg += `- ${r.ingredient_name} (${r.quantity} ${r.unit})\n`;
+        });
+    } else {
+        msg += "(Sin ingredientes definidos)\n";
+    }
+
+    msg += "\n¿Deseas AGREGAR un insumo a esta receta?";
+
+    if (confirm(msg)) {
+        const ingId = prompt("ID del Insumo a agregar (ej: I-01):");
+        if (!ingId) return;
+        const qty = prompt("Cantidad necesaria (ej: 0.2 para 200g si es kg):");
+        if (!qty) return;
+
+        const res = await apiCall('addRecipeItem', {
+            productId: prodId,
+            ingredientId: ingId,
+            quantity: qty
+        }, 'POST');
+
+        if (res.success) {
+            alert("Insumo agregado a la receta.");
+            manageRecipeUi(prodId, prodName); // Valid recurrence
+        } else {
+            alert("Error al guardar.");
+        }
+    }
+}
 
 // Tables
 let currentTablesState = [];
