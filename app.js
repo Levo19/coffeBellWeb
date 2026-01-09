@@ -110,7 +110,8 @@ function setupUIForRole(role) {
         refreshDashboard();
     } else if (role === 'mozo') {
         document.getElementById('nav-mozo').style.display = 'block';
-        showView('waiter');
+        showView('tables'); // Default to tables view
+        refreshTables();
         loadProducts();
     } else if (role === 'cocina') {
         document.getElementById('nav-cocina').style.display = 'block';
@@ -135,6 +136,52 @@ function showView(viewName) {
 }
 
 // --- Features ---
+
+// Tables
+async function refreshTables() {
+    const container = document.getElementById('tables-grid');
+    if (!container) return;
+
+    container.innerHTML = 'Cargando...';
+    const tables = await apiCall('getTablesStatus');
+
+    container.innerHTML = '';
+    tables.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'product-card'; // Reuse card style
+        div.style.backgroundColor = t.status === 'free' ? '#E8F5E9' : '#FFEBEE';
+        div.style.border = t.status === 'free' ? '1px solid #A5D6A7' : '1px solid #EF9A9A';
+        div.style.textAlign = 'center';
+        div.style.padding = '20px';
+
+        div.onclick = () => selectTable(t.id);
+
+        div.innerHTML = `
+            <div style="font-size: 24px; font-weight:bold; margin-bottom:5px;">${t.id}</div>
+            <div style="color: ${t.status === 'free' ? 'green' : 'red'}; font-weight:600; text-transform:uppercase; font-size:12px;">
+                ${t.status === 'free' ? 'Libre' : 'Ocupada'}
+            </div>
+            ${t.orders.length > 0 ? `<div style="font-size:10px; margin-top:5px;">${t.orders.length} orden(es)</div>` : ''}
+        `;
+        container.appendChild(div);
+    });
+}
+
+function selectTable(id) {
+    const select = document.getElementById('table-select');
+    // Ensure option exists or just set value
+    // Since select is populated, we assume 1-17 logic or just set val
+    if (select) {
+        // If options not fully pop, maybe re-pop? 
+        // For MVP assuming 1-2 options in HTML, let's fix that pop too
+        let opts = '';
+        for (let i = 1; i <= 17; i++) opts += `<option value="${i}">Mesa ${i}</option>`;
+        select.innerHTML = opts;
+
+        select.value = id;
+    }
+    showView('waiter');
+}
 
 // Waiter
 async function loadProducts() {
