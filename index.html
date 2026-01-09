@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffe Bell ERP</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+
+<body>
+
+    <!-- Setup Modal (First Run) -->
+    <div id="setup-screen" class="login-wrapper">
+        <div class="login-box slide-up">
+            <h2>Configuración</h2>
+            <p>Ingrese la URL de su Web App de Google Apps Script</p>
+            <div class="form-group">
+                <input type="text" id="api-url-input" class="form-control"
+                    placeholder="https://script.google.com/macros/s/...">
+            </div>
+            <button onclick="saveApiUrl()" class="btn">Guardar y Continuar</button>
+        </div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-wrapper" style="display: none;">
+        <div class="login-box slide-up">
+            <h2>Coffee Bell</h2>
+            <p style="color: #666; margin-bottom: 20px;">Staff Access Portal</p>
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" id="username" class="form-control" placeholder="Enter ID">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" id="password" class="form-control" placeholder="••••••">
+            </div>
+            <button onclick="attemptLogin()" class="btn" style="width: 100%">Sign In</button>
+            <div id="login-error" style="color: red; margin-top: 10px; font-size: 14px;"></div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app-content" class="app-container" style="display: none;">
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span class="material-icons">coffee</span> Coffe Bell
+            </div>
+
+            <div id="nav-admin" class="nav-group">
+                <div class="nav-item active" onclick="showView('dashboard')">
+                    <span class="material-icons">dashboard</span> Dashboard
+                </div>
+                <div class="nav-item" onclick="showView('inventory')">
+                    <span class="material-icons">inventory</span> Insumos
+                </div>
+            </div>
+
+            <div id="nav-mozo" class="nav-group" style="display:none">
+                <div class="nav-item" onclick="showView('waiter')">
+                    <span class="material-icons">restaurant_menu</span> Tomar Orden
+                </div>
+                <div class="nav-item" onclick="showView('tables')">
+                    <span class="material-icons">table_restaurant</span> Mis Mesas
+                </div>
+            </div>
+
+            <div id="nav-cocina" class="nav-group" style="display:none">
+                <div class="nav-item" onclick="showView('kitchen')">
+                    <span class="material-icons">soup_kitchen</span> Cocina
+                </div>
+            </div>
+
+            <div id="nav-caja" class="nav-group" style="display:none">
+                <div class="nav-item" onclick="showView('cashier')">
+                    <span class="material-icons">point_of_sale</span> Caja
+                </div>
+            </div>
+
+            <div class="nav-footer">
+                <div class="nav-item" onclick="logout()">
+                    <span class="material-icons">logout</span> Logout
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+
+            <!-- Dashboard View (Admin) -->
+            <div id="view-dashboard" class="view-section active">
+                <h2>Resumen General</h2>
+
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Ventas Hoy</div>
+                        <div class="stat-value" id="dash-sales">...</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #26A69A, #00695C);">
+                        <div class="stat-label">Pedidos</div>
+                        <div class="stat-value" id="dash-orders">...</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #FFA726, #EF6C00);">
+                        <div class="stat-label">Gastos</div>
+                        <div class="stat-value" id="dash-expenses">...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Waiter View (Mobile Optimized) -->
+            <div id="view-waiter" class="view-section">
+                <div class="waiter-header">
+                    <h2>Nueva Comanda</h2>
+                    <select id="table-select" class="form-control" style="width: 150px;">
+                        <option value="1">Mesa 1</option>
+                        <option value="2">Mesa 2</option>
+                        <!-- JS will populate -->
+                    </select>
+                </div>
+
+                <div class="waiter-layout">
+                    <!-- Menu -->
+                    <div class="menu-area">
+                        <div id="product-list" class="product-grid">
+                            <!-- JS populated -->
+                        </div>
+                    </div>
+
+                    <!-- Mobile Cart Toggle / Sidebar -->
+                    <div class="cart-area">
+                        <h3>Pedido Actual</h3>
+                        <div id="current-order-items" class="cart-items">
+                            <div class="empty-cart">Selecciona productos</div>
+                        </div>
+                        <div class="cart-footer">
+                            <div class="cart-total">
+                                <span>Total:</span>
+                                <span id="order-total">S/ 0.00</span>
+                            </div>
+                            <button class="btn btn-success btn-lg" style="width: 100%" onclick="submitOrder()">Enviar a
+                                Cocina</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kitchen View (Tablet Optimized) -->
+            <div id="view-kitchen" class="view-section">
+                <div class="kitchen-header">
+                    <h2>Pantalla de Cocina</h2>
+                    <button class="btn btn-secondary" onclick="refreshKitchen()"><span
+                            class="material-icons">refresh</span> Actualizar</button>
+                </div>
+
+                <div id="kitchen-board" class="ticket-grid">
+                    <!-- JS Populated -->
+                </div>
+            </div>
+
+            <!-- Cashier View (Desktop Optimized) -->
+            <div id="view-cashier" class="view-section">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2>Caja - Cobranza</h2>
+                    <button class="btn btn-secondary" onclick="refreshCashier()">Actualizar</button>
+                </div>
+
+                <div class="card table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Orden #</th>
+                                <th>Mesa</th>
+                                <th>Mozo</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th>Accion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cashier-list">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Inventory View -->
+            <div id="view-inventory" class="view-section">
+                <h2>Control de Insumos</h2>
+                <div class="card">
+                    <button class="btn" style="margin-bottom: 20px;">+ Registrar Ingreso</button>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Insumo</th>
+                                <th>Stock Actual</th>
+                                <th>Unidad</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Mobile Navigation Bar (Visible only on mobile) -->
+    <div id="mobile-nav" class="mobile-nav">
+        <div class="mobile-nav-item active" onclick="showView('waiter')">
+            <span class="material-icons">restaurant_menu</span>
+            <span>Orden</span>
+        </div>
+        <div class="mobile-nav-item" onclick="showView('tables')">
+            <span class="material-icons">table_restaurant</span>
+            <span>Mesas</span>
+        </div>
+        <div class="mobile-nav-item" onclick="logout()">
+            <span class="material-icons">logout</span>
+            <span>Salir</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
