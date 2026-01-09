@@ -1,16 +1,24 @@
 /**
  * Coffe Bell ERP - Client Logic
- * Decoupled Architecture
+ * Decoupled Architecture - Optimized Version
  */
 
 // --- Configuration ---
 // The user has provided the Deployment URL
 let API_URL = 'https://script.google.com/macros/s/AKfycbwIAhAuY0ncXYPlKfgzxX8iaurn6anq5t4khMEt_VWhoeF98OUbOGrTdHwXxzLfazVx4A/exec';
 
-// --- State ---
+// --- State & Performance ---
+const AppState = {
+    tables: [],
+    products: [],
+    orders: [],
+    lastSync: 0,
+    syncInterval: null
+};
+
 let currentUser = null;
 let currentCart = [];
-let itemsList = []; // Products
+let itemsList = []; // Legacy ref
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -18,8 +26,54 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('setup-screen').style.display = 'flex';
     } else {
         document.getElementById('login-screen').style.display = 'flex';
+        // PRE-FETCH: Load public data immediately
+        prefetchData();
     }
 });
+
+async function prefetchData() {
+    console.log("Prefetching data...");
+    // Role 'public' fetches products and tables
+    const data = await apiCall('getSyncData', { role: 'public' });
+    if (data && data.timestamp) {
+        updateLocalState(data);
+    }
+}
+
+function updateLocalState(data) {
+    if (data.tables) AppState.tables = data.tables;
+    if (data.products) AppState.products = data.products;
+    if (data.orders) AppState.orders = data.orders; // Relevant for role
+    AppState.lastSync = new Date().getTime();
+
+    // Auto-refresh current view if data changed
+    const activeView = document.querySelector('.view-section.active');
+    if (activeView) {
+        const id = activeView.id;
+        if (id === 'view-tables') renderTablesFromState();
+        if (id === 'view-kitchen') renderKitchenFromState();
+        if (id === 'view-cashier') renderCashierFromState();
+        if (id === 'view-waiter') renderProductsFromState();
+    }
+}
+
+function startSyncLoop(role) {
+    if (AppState.syncInterval) clearInterval(AppState.syncInterval);
+
+    // Critical Roles: 4s polling. Others: 60s
+    let interval = 60000;
+    if (['mozo', 'cocina', 'caja', 'admin'].includes(role)) interval = 4000;
+
+    console.log(`Starting Sync Loop for ${role} every ${interval}ms`);
+
+    // Immediate call
+    apiCall('getSyncData', { role: role }).then(updateLocalState);
+
+    AppState.syncInterval = setInterval(async () => {
+        const data = await apiCall('getSyncData', { role: role });
+        if (data) updateLocalState(data);
+    }, interval);
+}
 
 function saveApiUrl() {
     const input = document.getElementById('api-url-input').value;
@@ -28,44 +82,45 @@ function saveApiUrl() {
         API_URL = input;
         document.getElementById('setup-screen').style.display = 'none';
         document.getElementById('login-screen').style.display = 'flex';
+        prefetchData();
     } else {
         alert("URL invalida. Debe ser un link de Google Apps Script.");
     }
 }
 
 // --- API Helper ---
-// Google Apps Script Web App redirects 302 to a content serving URL.
-// Fetch follows this automatically.
 async function apiCall(action, payload = {}, method = 'GET') {
     if (!API_URL) return;
 
     let url = `${API_URL}?action=${action}`;
     let options = {
         method: method,
-        redirect: "follow", // Important for GAS
+        redirect: "follow",
     };
 
     if (method === 'POST') {
-        // GAS doPost usually works best with simple payload
-        // We send data in the body
         const postData = JSON.stringify({ action, ...payload });
         options.body = postData;
-        // Weirdly, GAS sometimes prefers text/plain to avoid preflight CORS issues
         options.headers = { "Content-Type": "text/plain;charset=utf-8" };
     } else {
-        // Append params for GET
         const query = Object.keys(payload).map(k => `${k}=${encodeURIComponent(payload[k])}`).join('&');
         if (query) url += `&${query}`;
     }
 
     try {
         const response = await fetch(url, options);
-        // Sometimes GAS returns HTML callback if not strictly JSON, but we enforced JSON MimeType
-        const json = await response.json();
-        return json;
+        // Catch HTML errors (GAS sometimes returns HTML on error)
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error("API Non-JSON Response", text);
+            throw new Error("Respuesta inválida del servidor");
+        }
     } catch (error) {
         console.error("API Error", error);
-        alert("Error de Conexión: " + error.message);
+        // Only alert meaningful errors, silence background sync errors?
+        if (action !== 'getSyncData') alert("Error de Conexión: " + error.message);
         return { error: error.message };
     }
 }
@@ -83,6 +138,9 @@ async function attemptLogin() {
         currentUser = res;
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('app-content').style.display = 'flex';
+
+        // Start Sync Loop based on role
+        startSyncLoop(res.role);
         setupUIForRole(res.role);
     } else {
         errorDiv.innerText = res.message || "Login failed";
@@ -94,35 +152,28 @@ function logout() {
 }
 
 function setupUIForRole(role) {
-    // Desktop Nav
     document.querySelectorAll('.nav-group').forEach(el => el.style.display = 'none');
-
-    // Mobile Nav
     const mobileNav = document.getElementById('mobile-nav');
-    if (window.innerWidth <= 768) {
-        mobileNav.style.display = 'flex';
-        // Adjust for role
-    }
+    if (window.innerWidth <= 768) mobileNav.style.display = 'flex';
 
     if (role === 'admin') {
         document.getElementById('nav-admin').style.display = 'block';
         showView('dashboard');
         refreshDashboard();
+        renderTablesFromState();
     } else if (role === 'mozo') {
         document.getElementById('nav-mozo').style.display = 'block';
-        showView('tables'); // Default to tables view
-        refreshTables();
+        showView('tables');
+        renderTablesFromState();
         loadProducts();
     } else if (role === 'cocina') {
         document.getElementById('nav-cocina').style.display = 'block';
         showView('kitchen');
-        refreshKitchen();
-        setInterval(refreshKitchen, 30000); // Auto refresh
+        renderKitchenFromState();
     } else if (role === 'cajero') {
         document.getElementById('nav-caja').style.display = 'block';
         showView('cashier');
-        refreshCashier();
-        setInterval(refreshCashier, 30000); // Auto refresh
+        renderCashierFromState();
     }
 }
 
@@ -134,13 +185,17 @@ function showView(viewName) {
     const target = document.getElementById('view-' + viewName);
     if (target) target.classList.add('active');
 
-    if (viewName === 'inventory') loadInventory();
-    if (viewName === 'finance') loadFinance();
-    if (viewName === 'products') loadAdminProducts();
+    // Instant Render from State
+    if (viewName === 'tables') renderTablesFromState();
+    if (viewName === 'kitchen') renderKitchenFromState();
+    if (viewName === 'cashier') renderCashierFromState();
+
+    // On-demand fetch for non-synced views
     if (viewName === 'inventory') loadInventory();
     if (viewName === 'finance') loadFinance();
     if (viewName === 'products') loadAdminProducts();
     if (viewName === 'reports') loadReports();
+    if (viewName === 'waiter') renderProductsFromState();
 }
 
 function showLoading(elementId) {
@@ -150,9 +205,132 @@ function showLoading(elementId) {
     }
 }
 
+// --- RENDER FROM STATE (Instant) ---
+
+// Replace refreshTables with renderTablesFromState
+function refreshTables() { renderTablesFromState(); } // Legacy alias
+
+function renderTablesFromState() {
+    const container = document.getElementById('tables-grid');
+    if (!container) return;
+
+    const tables = AppState.tables;
+    // Only return if it's truly not loaded yet (null/undefined)
+    if (!tables) {
+        if (!AppState.lastSync) container.innerHTML = '<p>Cargando mesas...</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+
+    if (tables.length === 0) {
+        if (!currentUser || currentUser.role !== 'admin') {
+            container.innerHTML = '<p>No hay mesas habilitadas.</p>';
+        }
+    } else {
+        tables.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'product-card';
+            const isFree = t.status === 'free';
+            div.style.backgroundColor = isFree ? '#F1F8E9' : '#FFEBEE';
+            div.style.border = isFree ? '2px solid #C5E1A5' : '2px solid #EF9A9A';
+            div.style.color = isFree ? '#33691E' : '#B71C1C';
+            div.style.position = 'relative';
+
+            if (currentUser && currentUser.role === 'admin') {
+                const delBtn = document.createElement('span');
+                delBtn.innerHTML = '&times;';
+                delBtn.style.cssText = 'position:absolute; top:-10px; right:-10px; background:white; border-radius:50%; width:24px; height:24px; box-shadow:0 2px 5px rgba(0,0,0,0.2); color:red; line-height:24px; font-weight:bold; cursor:pointer; z-index:10; display:flex; justify-content:center; align-items:center;';
+                delBtn.onclick = (e) => { e.stopPropagation(); deleteTableApi(t.id); };
+                div.appendChild(delBtn);
+            }
+
+            div.innerHTML += `
+                <div style="font-size: 20px; font-weight:700; margin-bottom:5px;">${t.label || 'Mesa ' + t.id}</div>
+                <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:600;">
+                    ${isFree ? '● Disponible' : '● Ocupada'}
+                </div>
+                 ${t.orders.length > 0 ? `<div style="font-size:10px; margin-top:8px; background:white; padding:2px 8px; border-radius:10px; display:inline-block; border:1px solid rgba(0,0,0,0.1)">Orden #${t.orders[0]}</div>` : ''}
+           `;
+            div.onclick = (e) => { if (e.target.tagName !== 'SPAN') handleTableClick(t.id); };
+            container.appendChild(div);
+        });
+    }
+
+    // Always render Add Button if Admin
+    if (currentUser && currentUser.role === 'admin') {
+        const addDiv = document.createElement('div');
+        addDiv.className = 'product-card';
+        addDiv.style.border = '2px dashed #CFD8DC';
+        addDiv.style.backgroundColor = '#FAFAFA';
+        addDiv.style.color = '#B0BEC5';
+        addDiv.style.display = 'flex';
+        addDiv.style.justifyContent = 'center';
+        addDiv.style.alignItems = 'center';
+        addDiv.style.minHeight = '100px';
+        addDiv.style.cursor = 'pointer';
+        addDiv.innerHTML = '<div style="text-align:center"><span class="material-icons" style="font-size:32px;">add_circle_outline</span><div style="font-size:12px; margin-top:5px">Nueva Mesa</div></div>';
+        addDiv.onclick = addNewTable;
+        container.appendChild(addDiv);
+    }
+}
+
+// Replace refreshKitchen with renderKitchenFromState
+function refreshKitchen() { renderKitchenFromState(); }
+
+function renderKitchenFromState() {
+    const container = document.getElementById('kitchen-board');
+    if (!container) return;
+
+    const orders = AppState.orders;
+    if (!orders || orders.length === 0) {
+        container.innerHTML = '<p>No hay pedidos pendientes</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    orders.forEach(o => {
+        const div = document.createElement('div');
+        div.className = `ticket ${o.status === 'ready' ? 'ready' : ''}`;
+        const items = o.items.map(i => `<div class="ticket-item">${i.quantity}x ${i.product_name}</div>`).join('');
+        div.innerHTML = `
+            <div class="ticket-header">
+                <span>Mesa ${o.table_number}</span>
+                <span>${o.updated_at ? new Date(o.updated_at).toLocaleTimeString().slice(0, 5) : ''}</span>
+            </div>
+            ${items}
+            <div style="margin-top:15px; text-align:right;">
+                ${o.status !== 'ready' ? `<button class="btn btn-success" onclick="markReady('${o.id}')">Listo</button>` : ''}
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function refreshCashier() { renderCashierFromState(); }
+
+function renderCashierFromState() {
+    const tbody = document.getElementById('cashier-list');
+    if (!tbody) return;
+    const orders = AppState.orders;
+
+    tbody.innerHTML = '';
+    orders.forEach(o => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>#${o.id.toString().slice(-4)}</td>
+            <td>${o.table_number}</td>
+            <td>${o.waiter_id}</td>
+            <td>S/ ${Number(o.total).toFixed(2)}</td>
+            <td>${o.status}</td>
+            <td><button class="btn btn-success btn-sm" onclick="payOrder('${o.id}')">Cobrar</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
 // --- Features ---
 
-// Menu / Products Manager
 async function addNewProductUi() {
     const name = prompt("Nombre del Nuevo Producto:");
     if (!name) return;
@@ -236,7 +414,6 @@ async function updateProductPriceUi(id, current) {
 }
 
 async function manageRecipeUi(prodId, prodName) {
-    // 1. Fetch current recipe
     const recipe = await apiCall('getRecipe', { productId: prodId });
 
     let msg = `Receta para: ${prodName}\n----------------\n`;
@@ -264,87 +441,13 @@ async function manageRecipeUi(prodId, prodName) {
 
         if (res.success) {
             alert("Insumo agregado a la receta.");
-            manageRecipeUi(prodId, prodName); // Valid recurrence
+            manageRecipeUi(prodId, prodName);
         } else {
             alert("Error al guardar.");
         }
     }
 }
 
-// Tables
-let currentTablesState = [];
-
-async function refreshTables() {
-    const container = document.getElementById('tables-grid');
-    if (!container) return;
-
-    container.innerHTML = 'Cargando...';
-    try {
-        const tables = await apiCall('getTablesStatus');
-        currentTablesState = tables;
-
-        container.innerHTML = '';
-
-        // Render Tables
-        tables.forEach(t => {
-            const div = document.createElement('div');
-            div.className = 'product-card';
-            div.style.backgroundColor = t.status === 'free' ? '#E8F5E9' : '#FFEBEE';
-            div.style.border = t.status === 'free' ? '1px solid #A5D6A7' : '1px solid #EF9A9A';
-            div.style.textAlign = 'center';
-            div.style.padding = '20px';
-            div.style.cursor = 'pointer';
-            div.style.position = 'relative';
-
-            // Delete Button (Admin Only)
-            if (currentUser && currentUser.role === 'admin') {
-                const delBtn = document.createElement('span');
-                delBtn.innerHTML = '&times;';
-                delBtn.style.cssText = 'position:absolute; top:5px; right:10px; color:red; font-size:20px; font-weight:bold; cursor:pointer; z-index:10;';
-                delBtn.onclick = (e) => {
-                    e.stopPropagation(); // Prevent card click
-                    deleteTableApi(t.id);
-                };
-                div.appendChild(delBtn);
-            }
-
-            // Status Label
-            div.innerHTML += `
-                <div style="font-size: 20px; font-weight:bold; margin-bottom:5px;">${t.label || 'Mesa ' + t.id}</div>
-                <div style="color: ${t.status === 'free' ? 'green' : 'red'}; font-weight:600; text-transform:uppercase; font-size:12px;">
-                    ${t.status === 'free' ? 'Libre' : 'Ocupada'}
-                </div>
-                ${t.orders.length > 0 ? `<div style="font-size:10px; margin-top:5px; color:#c62828;">Orden #${t.orders[0]}</div>` : ''}
-            `;
-
-            // Main Click
-            div.onclick = (e) => {
-                if (e.target.tagName !== 'SPAN') handleTableClick(t.id);
-            };
-
-            container.appendChild(div);
-        });
-
-        // "Add Table" Button (Admin Only)
-        if (currentUser && currentUser.role === 'admin') {
-            const addDiv = document.createElement('div');
-            addDiv.className = 'product-card';
-            addDiv.style.border = '2px dashed #ccc';
-            addDiv.style.backgroundColor = '#f9f9f9';
-            addDiv.style.display = 'flex';
-            addDiv.style.justifyContent = 'center';
-            addDiv.style.alignItems = 'center';
-            addDiv.style.cursor = 'pointer';
-            addDiv.innerHTML = '<span class="material-icons" style="font-size:40px; color:#aaa">add</span>';
-            addDiv.onclick = addNewTable;
-            container.appendChild(addDiv);
-        }
-
-    } catch (e) {
-        container.innerHTML = 'Error al cargar mesas.';
-        console.error(e);
-    }
-}
 
 async function addNewTable() {
     const label = prompt("Nombre de la nueva mesa (ej: Patio 1):");
@@ -352,7 +455,8 @@ async function addNewTable() {
 
     const res = await apiCall('addTable', { label: label }, 'POST');
     if (res.success) {
-        refreshTables();
+        // Optimistic Update
+        prefetchData();
     } else {
         alert("Error al crear mesa");
     }
@@ -362,18 +466,19 @@ async function deleteTableApi(id) {
     if (!confirm("¿Eliminar esta mesa?")) return;
     const res = await apiCall('deleteTable', { tableId: id }, 'POST');
     if (res.success) {
-        refreshTables();
+        // Optimistic Update or re-fetch
+        renderTablesFromState(); // Removes instantly from UI? No, wait next sync.
+        apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
     } else {
         alert("Error al eliminar");
     }
 }
 
 async function handleTableClick(tableId) {
-    const table = currentTablesState.find(t => t.id == tableId);
+    const table = AppState.tables.find(t => t.id == tableId);
 
     if (table && table.status === 'occupied') {
         const orderId = table.orders[0];
-        // Show details or edit
         if (confirm(`La Mesa ${table.label || tableId} está OCUPADA (Orden #${orderId}).\n¿Deseas ver detalles o agregar productos?`)) {
             alert(`Funcionalidad de Edición en desarrollo.\nOrden ID: ${orderId}`);
         }
@@ -386,16 +491,11 @@ function selectTable(id) {
     const select = document.getElementById('table-select');
     if (select) {
         let opts = '';
-        // If we have dynamic tables in state, use them for the select box too!
-        if (currentTablesState.length > 0) {
-            // Only show free or current? For now show all.
-            currentTablesState.forEach(t => {
+        if (AppState.tables.length > 0) {
+            AppState.tables.forEach(t => {
                 opts += `<option value="${t.id}">${t.label || 'Mesa ' + t.id}</option>`;
             });
-        } else {
-            for (let i = 1; i <= 17; i++) opts += `<option value="${i}">Mesa ${i}</option>`;
         }
-
         select.innerHTML = opts;
         select.value = id;
     }
@@ -404,11 +504,22 @@ function selectTable(id) {
 
 // Waiter
 async function loadProducts() {
-    const data = await apiCall('getProducts');
-    if (Array.isArray(data)) {
-        itemsList = data;
-        renderProducts(data);
+    if (AppState.products.length > 0) {
+        itemsList = AppState.products;
+        renderProductsFromState();
+    } else {
+        // fallback
+        const data = await apiCall('getProducts');
+        if (data) {
+            AppState.products = data;
+            itemsList = data;
+            renderProductsFromState();
+        }
     }
+}
+
+function renderProductsFromState() {
+    renderProducts(AppState.products);
 }
 
 function renderProducts(list) {
@@ -487,74 +598,20 @@ async function submitOrder() {
         alert("Orden enviada!");
         currentCart = [];
         updateCartUI();
+        // Optimistic refresh
+        apiCall('getSyncData', { role: 'mozo' }).then(updateLocalState);
     } else {
         alert("Error: " + res.error);
     }
     btn.disabled = false; btn.innerText = "Enviar a Cocina";
 }
 
-// Kitchen
-async function refreshKitchen() {
-    const container = document.getElementById('kitchen-board');
-    const orders = await apiCall('getOrders', { role: 'cocina' });
-
-    if (!orders || orders.length === 0) {
-        container.innerHTML = '<p>No hay pedidos pendientes</p>';
-        return;
-    }
-
-    container.innerHTML = '';
-    orders.forEach(o => {
-        const div = document.createElement('div');
-        div.className = `ticket ${o.status === 'ready' ? 'ready' : ''}`;
-
-        const items = o.items.map(i => `<div class="ticket-item">${i.quantity}x ${i.product_name}</div>`).join('');
-
-        div.innerHTML = `
-            <div class="ticket-header">
-                <span>Mesa ${o.table_number}</span>
-                <span>${o.updated_at ? new Date(o.updated_at).toLocaleTimeString().slice(0, 5) : ''}</span>
-            </div>
-            ${items}
-            <div style="margin-top:15px; text-align:right;">
-                ${o.status !== 'ready' ? `<button class="btn btn-success" onclick="markReady('${o.id}')">Listo</button>` : ''}
-            </div>
-        `;
-        container.appendChild(div);
-    });
-}
-
 async function markReady(id) {
     await apiCall('updateOrderStatus', { orderId: id, status: 'ready' }, 'POST');
-    refreshKitchen();
+    // Instant feedback - Manual update state? Better wait for loop or quick fetch
+    apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
 }
 
-// Cashier
-async function refreshCashier() {
-    const tbody = document.getElementById('cashier-list');
-    const orders = await apiCall('getOrders', { role: 'caja' });
-
-    tbody.innerHTML = '';
-    orders.forEach(o => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>#${o.id.toString().slice(-4)}</td>
-            <td>${o.table_number}</td>
-            <td>${o.waiter_id}</td>
-            <td>S/ ${Number(o.total).toFixed(2)}</td>
-            <td>${o.status}</td>
-            <td><button class="btn btn-success btn-sm" onclick="payOrder('${o.id}')">Cobrar</button></td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-async function payOrder(id) {
-    if (confirm("Confirmar pago?")) {
-        await apiCall('updateOrderStatus', { orderId: id, status: 'paid' }, 'POST');
-        refreshCashier();
-    }
-}
 
 // Inventory
 async function registerEntry() {
@@ -567,7 +624,7 @@ async function registerEntry() {
     const res = await apiCall('updateInventory', { itemId: id, quantity: qty }, 'POST');
     if (res.success) {
         alert("Stock actualizado. Nuevo total: " + res.newStock);
-        loadInventory(); // Refresh list
+        loadInventory();
     } else {
         alert("Error: " + res.error);
     }
@@ -586,7 +643,6 @@ async function loadInventory() {
     }
 
     items.forEach((item) => {
-        // id, name, unit, current_stock, min_stock
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>
