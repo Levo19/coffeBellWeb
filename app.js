@@ -4,8 +4,8 @@
  */
 
 // --- Configuration ---
-// The user must provide the Deployment URL
-let API_URL = localStorage.getItem('COFFE_BELL_API_URL') || '';
+// The user has provided the Deployment URL
+let API_URL = 'https://script.google.com/macros/s/AKfycbwIAhAuY0ncXYPlKfgzxX8iaurn6anq5t4khMEt_VWhoeF98OUbOGrTdHwXxzLfazVx4A/exec';
 
 // --- State ---
 let currentUser = null;
