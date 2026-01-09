@@ -137,11 +137,69 @@ function showView(viewName) {
     if (viewName === 'inventory') loadInventory();
     if (viewName === 'finance') loadFinance();
     if (viewName === 'products') loadAdminProducts();
+    if (viewName === 'inventory') loadInventory();
+    if (viewName === 'finance') loadFinance();
+    if (viewName === 'products') loadAdminProducts();
+    if (viewName === 'reports') loadReports();
+}
+
+function showLoading(elementId) {
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.innerHTML = '<div style="display:flex; justify-content:center; padding:20px;"><div style="border: 3px solid #f3f3f3; border-top: 3px solid #6F4E37; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite;"></div></div><style>@keyframes spin {0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); }}</style>';
+    }
 }
 
 // --- Features ---
 
 // Menu / Products Manager
+async function addNewProductUi() {
+    const name = prompt("Nombre del Nuevo Producto:");
+    if (!name) return;
+    const cat = prompt("Categoría (Entrada, Plato de Fondo, Bebida):", "Plato de Fondo");
+    const price = prompt("Precio (S/):");
+
+    if (name && cat && price) {
+        const payload = { name: name, category: cat, price: Number(price) };
+        const res = await apiCall('addProduct', { productData: payload }, 'POST');
+        if (res.success) {
+            alert('Producto Creado');
+            loadAdminProducts();
+        } else {
+            alert('Error al crear');
+        }
+    }
+}
+
+async function loadReports() {
+    document.getElementById('report-top-products').innerHTML = '<tr><td colspan="2">Calculando...</td></tr>';
+    document.getElementById('report-waiter-perf').innerHTML = '<tr><td colspan="2">Calculando...</td></tr>';
+
+    const stats = await apiCall('getAdvancedStats');
+
+    // Top Products
+    const topTbody = document.getElementById('report-top-products');
+    topTbody.innerHTML = '';
+    if (stats.topProducts.length === 0) {
+        topTbody.innerHTML = '<tr><td colspan="2">Sin datos de ventas</td></tr>';
+    } else {
+        stats.topProducts.forEach(p => {
+            topTbody.innerHTML += `<tr><td>${p.name}</td><td>${p.qty} un.</td></tr>`;
+        });
+    }
+
+    // Waiter Perf
+    const waiterTbody = document.getElementById('report-waiter-perf');
+    waiterTbody.innerHTML = '';
+    if (stats.waiterPerformance.length === 0) {
+        waiterTbody.innerHTML = '<tr><td colspan="2">Sin datos</td></tr>';
+    } else {
+        stats.waiterPerformance.forEach(w => {
+            waiterTbody.innerHTML += `<tr><td>${w.waiter}</td><td>S/ ${w.total.toFixed(2)}</td></tr>`;
+        });
+    }
+}
+
 async function loadAdminProducts() {
     const tbody = document.getElementById('admin-products-list');
     if (!tbody) return;
