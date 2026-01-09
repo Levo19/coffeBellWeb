@@ -141,46 +141,131 @@ function showView(viewName) {
 // --- Features ---
 
 // Tables
+let currentTablesState = [];
+
 async function refreshTables() {
     const container = document.getElementById('tables-grid');
     if (!container) return;
 
     container.innerHTML = 'Cargando...';
-    const tables = await apiCall('getTablesStatus');
+    try {
+        const tables = await apiCall('getTablesStatus');
+        currentTablesState = tables;
 
-    container.innerHTML = '';
-    tables.forEach(t => {
-        const div = document.createElement('div');
-        div.className = 'product-card'; // Reuse card style
-        div.style.backgroundColor = t.status === 'free' ? '#E8F5E9' : '#FFEBEE';
-        div.style.border = t.status === 'free' ? '1px solid #A5D6A7' : '1px solid #EF9A9A';
-        div.style.textAlign = 'center';
-        div.style.padding = '20px';
+        container.innerHTML = '';
 
-        div.onclick = () => selectTable(t.id);
+        // Render Tables
+        tables.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'product-card';
+            div.style.backgroundColor = t.status === 'free' ? '#E8F5E9' : '#FFEBEE';
+            div.style.border = t.status === 'free' ? '1px solid #A5D6A7' : '1px solid #EF9A9A';
+            div.style.textAlign = 'center';
+            div.style.padding = '20px';
+            div.style.cursor = 'pointer';
+            div.style.position = 'relative';
 
-        div.innerHTML = `
-            <div style="font-size: 24px; font-weight:bold; margin-bottom:5px;">${t.id}</div>
-            <div style="color: ${t.status === 'free' ? 'green' : 'red'}; font-weight:600; text-transform:uppercase; font-size:12px;">
-                ${t.status === 'free' ? 'Libre' : 'Ocupada'}
-            </div>
-            ${t.orders.length > 0 ? `<div style="font-size:10px; margin-top:5px;">${t.orders.length} orden(es)</div>` : ''}
-        `;
-        container.appendChild(div);
-    });
+            // Delete Button (Admin Only)
+            if (currentUser && currentUser.role === 'admin') {
+                const delBtn = document.createElement('span');
+                delBtn.innerHTML = '&times;';
+                delBtn.style.cssText = 'position:absolute; top:5px; right:10px; color:red; font-size:20px; font-weight:bold; cursor:pointer; z-index:10;';
+                delBtn.onclick = (e) => {
+                    e.stopPropagation(); // Prevent card click
+                    deleteTableApi(t.id);
+                };
+                div.appendChild(delBtn);
+            }
+
+            // Status Label
+            div.innerHTML += `
+                <div style="font-size: 20px; font-weight:bold; margin-bottom:5px;">${t.label || 'Mesa ' + t.id}</div>
+                <div style="color: ${t.status === 'free' ? 'green' : 'red'}; font-weight:600; text-transform:uppercase; font-size:12px;">
+                    ${t.status === 'free' ? 'Libre' : 'Ocupada'}
+                </div>
+                ${t.orders.length > 0 ? `<div style="font-size:10px; margin-top:5px; color:#c62828;">Orden #${t.orders[0]}</div>` : ''}
+            `;
+
+            // Main Click
+            div.onclick = (e) => {
+                if (e.target.tagName !== 'SPAN') handleTableClick(t.id);
+            };
+
+            container.appendChild(div);
+        });
+
+        // "Add Table" Button (Admin Only)
+        if (currentUser && currentUser.role === 'admin') {
+            const addDiv = document.createElement('div');
+            addDiv.className = 'product-card';
+            addDiv.style.border = '2px dashed #ccc';
+            addDiv.style.backgroundColor = '#f9f9f9';
+            addDiv.style.display = 'flex';
+            addDiv.style.justifyContent = 'center';
+            addDiv.style.alignItems = 'center';
+            addDiv.style.cursor = 'pointer';
+            addDiv.innerHTML = '<span class="material-icons" style="font-size:40px; color:#aaa">add</span>';
+            addDiv.onclick = addNewTable;
+            container.appendChild(addDiv);
+        }
+
+    } catch (e) {
+        container.innerHTML = 'Error al cargar mesas.';
+        console.error(e);
+    }
+}
+
+async function addNewTable() {
+    const label = prompt("Nombre de la nueva mesa (ej: Patio 1):");
+    if (!label) return;
+
+    const res = await apiCall('addTable', { label: label }, 'POST');
+    if (res.success) {
+        refreshTables();
+    } else {
+        alert("Error al crear mesa");
+    }
+}
+
+async function deleteTableApi(id) {
+    if (!confirm("¿Eliminar esta mesa?")) return;
+    const res = await apiCall('deleteTable', { tableId: id }, 'POST');
+    if (res.success) {
+        refreshTables();
+    } else {
+        alert("Error al eliminar");
+    }
+}
+
+async function handleTableClick(tableId) {
+    const table = currentTablesState.find(t => t.id == tableId);
+
+    if (table && table.status === 'occupied') {
+        const orderId = table.orders[0];
+        // Show details or edit
+        if (confirm(`La Mesa ${table.label || tableId} está OCUPADA (Orden #${orderId}).\n¿Deseas ver detalles o agregar productos?`)) {
+            alert(`Funcionalidad de Edición en desarrollo.\nOrden ID: ${orderId}`);
+        }
+    } else {
+        selectTable(tableId);
+    }
 }
 
 function selectTable(id) {
     const select = document.getElementById('table-select');
-    // Ensure option exists or just set value
-    // Since select is populated, we assume 1-17 logic or just set val
     if (select) {
-        // If options not fully pop, maybe re-pop? 
-        // For MVP assuming 1-2 options in HTML, let's fix that pop too
         let opts = '';
-        for (let i = 1; i <= 17; i++) opts += `<option value="${i}">Mesa ${i}</option>`;
-        select.innerHTML = opts;
+        // If we have dynamic tables in state, use them for the select box too!
+        if (currentTablesState.length > 0) {
+            // Only show free or current? For now show all.
+            currentTablesState.forEach(t => {
+                opts += `<option value="${t.id}">${t.label || 'Mesa ' + t.id}</option>`;
+            });
+        } else {
+            for (let i = 1; i <= 17; i++) opts += `<option value="${i}">Mesa ${i}</option>`;
+        }
 
+        select.innerHTML = opts;
         select.value = id;
     }
     showView('waiter');
