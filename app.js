@@ -72,8 +72,7 @@ function updateLocalState(data) {
 function startSyncLoop(role) {
     if (AppState.syncInterval) clearInterval(AppState.syncInterval);
 
-    // Admin: 4s loop (includes everything now)
-    // Others: 4s loop (includes their specific data)
+    // Mixed intervals
     let interval = 4000;
 
     console.log(`Starting Sync Loop for ${role} every ${interval}ms`);
@@ -121,6 +120,7 @@ async function apiCall(action, payload = {}, method = 'GET') {
 
     try {
         const response = await fetch(url, options);
+        // Catch HTML errors (GAS sometimes returns HTML on error)
         const text = await response.text();
         try {
             return JSON.parse(text);
@@ -162,15 +162,13 @@ function logout() {
 
 function setupUIForRole(role) {
     document.querySelectorAll('.nav-group').forEach(el => el.style.display = 'none');
-    const mobileNav = document.getElementById('mobile-nav');
-    if (window.innerWidth <= 768) mobileNav.style.display = 'flex';
 
+    // Logic for Sidebar Role content
     if (role === 'admin') {
         document.getElementById('nav-admin').style.display = 'block';
         showView('dashboard');
         refreshDashboard();
         renderTablesFromState();
-        // Prefetch heavy views via SyncLoop mostly, but let's trigger renders if data exists
     } else if (role === 'mozo') {
         document.getElementById('nav-mozo').style.display = 'block';
         showView('tables');
@@ -341,7 +339,6 @@ function renderCashierFromState() {
     });
 }
 
-// NEW: Inventory Sync
 function loadInventory() { renderInventoryFromState(); }
 function renderInventoryFromState() {
     const tbody = document.getElementById('inventory-list');
@@ -375,10 +372,8 @@ function renderInventoryFromState() {
     });
 }
 
-// NEW: Finance Sync
 function loadFinance() { renderFinanceFromState(); }
 function renderFinanceFromState() {
-    // Expenses List
     const tbody = document.getElementById('expense-list');
     if (!tbody) return;
 
@@ -389,7 +384,6 @@ function renderFinanceFromState() {
         else tbody.innerHTML = '<tr><td colspan="4">Sin gastos registrados</td></tr>';
     } else {
         tbody.innerHTML = '';
-        // Sort by date desc
         expenses.slice().reverse().forEach(e => {
             const tr = document.createElement('tr');
             const dateStr = new Date(e.date).toLocaleDateString();
@@ -402,24 +396,8 @@ function renderFinanceFromState() {
             tbody.appendChild(tr);
         });
     }
-
-    // Summary (Naive calculation from local data, or use Stats)
-    // If backend provides summary in stats, use that. Or calculate from expenses/orders locally.
-    // For now simple Sum from orders/expenses in state
-    if (AppState.orders && AppState.expenses) {
-        let totalSales = AppState.orders.reduce((acc, o) => acc + (o.status === 'paid' ? Number(o.total) : 0), 0); // Only current loop orders? 
-        // Actually, getSyncData might not return ALL historical orders.
-        // Better to rely on 'stats' object from backend for totals if available.
-    }
-
-    // Use AdvancedStats if available
-    if (AppState.stats && AppState.stats.financials) {
-        // Assume backend sends this? It wasn't in my previous patch. 
-        // Let's stick to what we know: display what we have.
-    }
 }
 
-// NEW: Admin Products
 function loadAdminProducts() { renderAdminProductsFromState(); }
 function renderAdminProductsFromState() {
     const tbody = document.getElementById('admin-products-list');
@@ -450,7 +428,6 @@ function renderAdminProductsFromState() {
     });
 }
 
-// NEW: Reports
 function loadReports() { renderReportsFromState(); }
 function renderReportsFromState() {
     const stats = AppState.stats;
@@ -466,7 +443,6 @@ function renderReportsFromState() {
         return;
     }
 
-    // Top Products
     topTbody.innerHTML = '';
     if (stats.topProducts.length === 0) {
         topTbody.innerHTML = '<tr><td colspan="2">Sin datos de ventas</td></tr>';
@@ -476,7 +452,6 @@ function renderReportsFromState() {
         });
     }
 
-    // Waiter Perf
     waiterTbody.innerHTML = '';
     if (stats.waiterPerformance.length === 0) {
         waiterTbody.innerHTML = '<tr><td colspan="2">Sin datos</td></tr>';
@@ -487,84 +462,170 @@ function renderReportsFromState() {
     }
 }
 
+// --- Generic Modal System ---
 
-// --- Features ---
+function openModal(title, fields, onSave) {
+    document.getElementById('modal-title').innerText = title;
+    const body = document.getElementById('modal-body');
+    body.innerHTML = ''; // Clear previous
 
-async function addNewProductUi() {
-    const name = prompt("Nombre del Nuevo Producto:");
-    if (!name) return;
-    const cat = prompt("Categoría (Entrada, Plato de Fondo, Bebida):", "Plato de Fondo");
-    const price = prompt("Precio (S/):");
+    fields.forEach(field => {
+        const div = document.createElement('div');
+        const label = document.createElement('label');
+        label.className = 'form-label';
+        label.innerText = field.label;
+        div.appendChild(label);
 
-    if (name && cat && price) {
-        const payload = { name: name, category: cat, price: Number(price) };
-        const res = await apiCall('addProduct', { productData: payload }, 'POST');
-        if (res.success) {
-            alert('Producto Creado');
-            // Trigger sync
-            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+        let input;
+        if (field.type === 'select') {
+            input = document.createElement('select');
+            input.className = 'form-control';
+            field.options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.innerText = opt;
+                if (field.value === opt) option.selected = true;
+                input.appendChild(option);
+            });
         } else {
-            alert('Error al crear');
+            input = document.createElement('input');
+            input.type = field.type || 'text';
+            input.className = 'form-control';
+            if (field.value) input.value = field.value;
+            if (field.placeholder) input.placeholder = field.placeholder;
         }
-    }
+        input.id = 'modal-input-' + field.id;
+        div.appendChild(input);
+        body.appendChild(div);
+    });
+
+    const saveBtn = document.getElementById('modal-save-btn');
+    // Remove old listeners to prevent dual firing (cloning approach or simple overwrite)
+    const newBtn = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newBtn, saveBtn);
+
+    newBtn.onclick = () => {
+        const values = {};
+        let isValid = true;
+        fields.forEach(field => {
+            const el = document.getElementById('modal-input-' + field.id);
+            if (!el.value) isValid = false;
+            values[field.id] = el.value;
+        });
+
+        if (!isValid) return alert("Por favor complete todos los campos");
+
+        // Show loading state on button
+        newBtn.innerText = "Guardando...";
+        newBtn.disabled = true;
+
+        onSave(values).then(() => {
+            closeModal();
+            newBtn.innerText = "Guardar";
+            newBtn.disabled = false;
+        }).catch(err => {
+            alert(err.message || "Error al guardar");
+            newBtn.innerText = "Guardar";
+            newBtn.disabled = false;
+        });
+    };
+
+    document.getElementById('generic-modal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('generic-modal').style.display = 'none';
 }
 
 
+// --- Features Using Modal ---
+
+async function addNewProductUi() {
+    openModal("Nuevo Producto", [
+        { id: 'name', label: 'Nombre del Producto', type: 'text', placeholder: 'Ej: Lomo Saltado' },
+        { id: 'category', label: 'Categoría', type: 'select', options: ['Plato de Fondo', 'Entrada', 'Bebida', 'Postre', 'Extra'] },
+        { id: 'price', label: 'Precio (S/)', type: 'number', placeholder: '0.00' }
+    ], async (values) => {
+        const payload = { name: values.name, category: values.category, price: Number(values.price) };
+        const res = await apiCall('addProduct', { productData: payload }, 'POST');
+        if (res.success) {
+            // alert('Producto Creado'); // Optional, modal closing is enough feedback
+            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+        } else {
+            throw new Error('Error al crear: ' + res.error);
+        }
+    });
+}
+
 async function updateProductPriceUi(id, current) {
-    const newPrice = prompt("Nuevo Precio (S/):", current);
-    if (newPrice && !isNaN(newPrice)) {
-        await apiCall('updateProductPrice', { productId: id, newPrice: newPrice }, 'POST');
+    openModal("Actualizar Precio", [
+        { id: 'price', label: 'Nuevo Precio (S/)', type: 'number', value: current }
+    ], async (values) => {
+        await apiCall('updateProductPrice', { productId: id, newPrice: values.price }, 'POST');
         apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
-    }
+    });
 }
 
 async function manageRecipeUi(prodId, prodName) {
     const recipe = await apiCall('getRecipe', { productId: prodId });
 
-    let msg = `Receta para: ${prodName}\n----------------\n`;
+    let msg = `<ul style="padding-left:20px; margin-bottom:20px;">`;
     if (recipe && recipe.length > 0) {
         recipe.forEach(r => {
-            msg += `- ${r.ingredient_name} (${r.quantity} ${r.unit})\n`;
+            msg += `<li><b>${r.ingredient_name}</b>: ${r.quantity} ${r.unit} 
+            <span style="color:red; cursor:pointer; font-size:12px;" onclick="deleteRecipeItem('${prodId}', '${r.ingredient_id}')">[x]</span></li>`;
         });
     } else {
-        msg += "(Sin ingredientes definidos)\n";
+        msg += "<li>(Sin ingredientes definidos)</li>";
     }
+    msg += "</ul>";
 
-    msg += "\n¿Deseas AGREGAR un insumo a esta receta?";
-
-    if (confirm(msg)) {
-        const ingId = prompt("ID del Insumo a agregar (ej: I-01):");
-        if (!ingId) return;
-        const qty = prompt("Cantidad necesaria (ej: 0.2 para 200g si es kg):");
-        if (!qty) return;
-
+    // Custom Modal Content with "Add" form inside
+    openModal(`Receta: ${prodName}`, [
+        { id: 'ingId', label: 'ID Insumo a Agregar (ej: I-01)', type: 'text' },
+        { id: 'qty', label: 'Cantidad', type: 'number', placeholder: '0.00' }
+    ], async (values) => {
         const res = await apiCall('addRecipeItem', {
             productId: prodId,
-            ingredientId: ingId,
-            quantity: qty
+            ingredientId: values.ingId,
+            quantity: values.qty
         }, 'POST');
 
         if (res.success) {
-            alert("Insumo agregado a la receta.");
-            manageRecipeUi(prodId, prodName);
+            alert("Insumo agregado.");
+            // manageRecipeUi(prodId, prodName); // Loop?
         } else {
-            alert("Error al guardar.");
+            throw new Error("Error al guardar.");
         }
+    });
+
+    const body = document.getElementById('modal-body');
+    if (body) {
+        const div = document.createElement('div');
+        div.innerHTML = msg;
+        body.prepend(div);
     }
 }
 
+// Needs global exposure for the onclick event in HTML string
+window.deleteRecipeItem = async function (pid, iid) {
+    if (!confirm("Borrar ingrediente?")) return;
+    await apiCall('deleteRecipeItem', { productId: pid, ingredientId: iid }, 'POST');
+    alert("Eliminado");
+};
+
 
 async function addNewTable() {
-    const label = prompt("Nombre de la nueva mesa (ej: Patio 1):");
-    if (!label) return;
-
-    const res = await apiCall('addTable', { label: label }, 'POST');
-    if (res.success) {
-        // Optimistic Update
-        apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
-    } else {
-        alert("Error al crear mesa");
-    }
+    openModal("Nueva Mesa", [
+        { id: 'label', label: 'Nombre de la Mesa', type: 'text', placeholder: 'Ej: Terraza 4' }
+    ], async (values) => {
+        const res = await apiCall('addTable', { label: values.label }, 'POST');
+        if (res.success) {
+            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+        } else {
+            throw new Error("Error al crear mesa");
+        }
+    });
 }
 
 async function deleteTableApi(id) {
@@ -644,30 +705,43 @@ function addToCart(product) {
 }
 
 function updateCartUI() {
-    const container = document.getElementById('current-order-items');
-    const totalEl = document.getElementById('order-total');
-    container.innerHTML = '';
+    // 1. Render to potential desktop container (if we keep it)
+    // 2. Render to Sticky Footer
+    const container = document.getElementById('current-order-items'); // Desktop/Static
+    const stickyContainer = document.getElementById('sticky-cart-items'); // Mobile
+    const totalEl = document.getElementById('order-total'); // Desktop
+    const stickyTotalEl = document.getElementById('sticky-cart-total'); // Mobile
+
+    let html = '';
     let total = 0;
 
     if (currentCart.length === 0) {
-        container.innerHTML = '<div class="empty-cart">Vacio</div>';
-        totalEl.innerText = "S/ 0.00";
-        return;
+        html = '<div class="empty-cart">Vacio</div>';
+    } else {
+        currentCart.forEach((item) => {
+            total += item.price * item.quantity;
+            html += `
+                <div style="display:flex; justify-content:space-between; margin-bottom:5px; border-bottom:1px dashed #eee; padding-bottom:2px;">
+                    <span>${item.quantity}x ${item.name}</span>
+                    <span>S/ ${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+            `;
+        });
     }
 
-    currentCart.forEach((item, index) => {
-        total += item.price * item.quantity;
-        const div = document.createElement('div');
-        div.style.display = 'flex';
-        div.style.justifyContent = 'space-between';
-        div.style.marginBottom = '10px';
-        div.innerHTML = `
-            <span>${item.quantity}x ${item.name}</span>
-            <span>S/ ${(item.price * item.quantity).toFixed(2)}</span>
-        `;
-        container.appendChild(div);
-    });
-    totalEl.innerText = "S/ " + total.toFixed(2);
+    // Update Desktop
+    if (container) container.innerHTML = html;
+    if (totalEl) totalEl.innerText = "S/ " + total.toFixed(2);
+
+    // Update Sticky (Mobile)
+    if (stickyContainer) stickyContainer.innerHTML = html;
+    if (stickyTotalEl) stickyTotalEl.innerText = "Total: S/ " + total.toFixed(2);
+
+    // Show/Hide Sticky bar based on cart content
+    const bar = document.getElementById('cart-sticky-bar');
+    if (bar) {
+        bar.style.display = currentCart.length > 0 ? 'flex' : 'none';
+    }
 }
 
 async function submitOrder() {
@@ -681,80 +755,74 @@ async function submitOrder() {
         total: currentCart.reduce((a, b) => a + (b.price * b.quantity), 0)
     };
 
-    const btn = document.querySelector('.btn-success');
-    btn.disabled = true; btn.innerText = "Enviando...";
+    const btns = document.querySelectorAll('.btn-submit-order');
+    btns.forEach(b => { b.disabled = true; b.innerText = "Enviando..."; });
 
     const res = await apiCall('createOrder', { orderData }, 'POST');
 
     if (res.success) {
-        alert("Orden enviada!");
+        alert("Orden enviada a Cocina! 👨‍🍳");
         currentCart = [];
         updateCartUI();
         // Optimistic refresh
         apiCall('getSyncData', { role: 'mozo' }).then(updateLocalState);
     } else {
-        alert("Error: " + res.error);
+        console.error("Order Failed", res);
+        alert("❌ Error al enviar orden:\n" + (res.error || "Error desconocido en el servidor."));
     }
-    btn.disabled = false; btn.innerText = "Enviar a Cocina";
+
+    btns.forEach(b => { b.disabled = false; b.innerText = "Enviar a Cocina"; });
 }
 
 async function markReady(id) {
     await apiCall('updateOrderStatus', { orderId: id, status: 'ready' }, 'POST');
-    // Instant feedback - Manual update state? Better wait for loop or quick fetch
     apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
 }
 
 
 // Inventory
 async function registerEntry() {
-    const id = prompt("Ingrese ID del Insumo (ej: I-01):");
-    if (!id) return;
-
-    const qty = prompt("Cantidad a ingresar:");
-    if (!qty) return;
-
-    const res = await apiCall('updateInventory', { itemId: id, quantity: qty }, 'POST');
-    if (res.success) {
-        alert("Stock actualizado. Nuevo total: " + res.newStock);
-        apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
-    } else {
-        alert("Error: " + res.error);
-    }
+    openModal("Registrar Ingreso de Stock", [
+        { id: 'id', label: 'ID del Insumo', type: 'text', placeholder: 'Ej: I-01' },
+        { id: 'qty', label: 'Cantidad a Agregar', type: 'number', placeholder: '0' }
+    ], async (values) => {
+        const res = await apiCall('updateInventory', { itemId: values.id, quantity: values.qty }, 'POST');
+        if (res.success) {
+            alert("Stock actualizado. Nuevo total: " + res.newStock);
+            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+        } else {
+            throw new Error("Error: " + res.error);
+        }
+    });
 }
 
 
 // Finance
 async function registerExpense() {
-    const desc = prompt("Descripción del Gasto (ej: Compra de Verduras):");
-    if (!desc) return;
+    openModal("Registrar Gasto", [
+        { id: 'desc', label: 'Descripción', type: 'text', placeholder: 'Ej: Pago de Luz' },
+        { id: 'amount', label: 'Monto (S/)', type: 'number', placeholder: '0.00' },
+        { id: 'cat', label: 'Categoría', type: 'select', options: ['Insumos', 'Servicios', 'Alquiler', 'Sueldos', 'Mantenimiento', 'Otros'] }
+    ], async (values) => {
+        const payload = {
+            description: values.desc,
+            amount: Number(values.amount),
+            category: values.cat,
+            userId: currentUser ? currentUser.id : 'admin'
+        };
 
-    const amount = prompt("Monto (S/):");
-    if (!amount) return;
-
-    const cat = prompt("Categoría (Insumos, Servicios, Alquiler, Sueldos):", "Insumos");
-
-    const payload = {
-        description: desc,
-        amount: Number(amount),
-        category: cat,
-        userId: currentUser ? currentUser.id : 'admin'
-    };
-
-    const res = await apiCall('registerExpense', { expenseData: payload }, 'POST');
-    if (res.success) {
-        alert("Gasto registrado correctamente");
-        apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
-        refreshDashboard();
-    } else {
-        alert("Error al registrar: " + res.error);
-    }
+        const res = await apiCall('registerExpense', { expenseData: payload }, 'POST');
+        if (res.success) {
+            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+            refreshDashboard();
+        } else {
+            throw new Error("Error: " + res.error);
+        }
+    });
 }
 
 // Dashboard
 async function refreshDashboard() {
-    // Dashboard stats might be partial from getSyncData?
-    // Let's rely on standard fetch for dashboard totals or stick to backend logic if easy.
-    // For now, keep it simple.
     const stats = await apiCall('getDashboardStats');
     if (stats) {
         document.getElementById('dash-sales').innerText = "S/ " + (stats.totalSales || 0).toFixed(2);
