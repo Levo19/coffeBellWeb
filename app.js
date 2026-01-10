@@ -1102,6 +1102,111 @@ async function updateOrderStatus(id, status) {
     apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
 }
 
+// ==========================================
+// 4. CART & ORDER LOGIC
+// ==========================================
+let cart = []; // Global Cart
+
+function addToCart(product) {
+    const existing = cart.find(i => i.id === product.id);
+    if (existing) {
+        existing.quantity++;
+    } else {
+        cart.push({ ...product, quantity: 1 });
+    }
+    updateCartUI();
+}
+
+function removeFromCart(index) {
+    cart.splice(index, 1);
+    updateCartUI();
+}
+
+function updateCartUI() {
+    const container = document.getElementById('current-order-items');
+    const totalEl = document.getElementById('order-total');
+
+    // Sticky Mobile Cart
+    const stickyContainer = document.getElementById('sticky-cart-items');
+    const stickyTotalEl = document.getElementById('sticky-cart-total');
+    const stickyBar = document.getElementById('cart-sticky-bar');
+
+    if (!container) return;
+
+    if (cart.length === 0) {
+        container.innerHTML = '<div class="empty-cart">Vacio</div>';
+        if (totalEl) totalEl.innerText = 'S/ 0.00';
+        if (stickyBar) stickyBar.style.display = 'none'; // Hide on mobile if empty
+        return;
+    }
+
+    if (stickyBar) stickyBar.style.display = 'block';
+
+    let html = '';
+    let total = 0;
+
+    cart.forEach((item, index) => {
+        const itemTotal = item.price * item.quantity;
+        total += itemTotal;
+        html += `
+            <div class="cart-item">
+                <div style="flex:1">
+                    <div style="font-weight:600">${item.name}</div>
+                    <div style="font-size:12px; color:#666">S/ ${item.price} x ${item.quantity}</div>
+                </div>
+                <div style="font-weight:bold; margin-right:10px;">S/ ${itemTotal.toFixed(2)}</div>
+                <div style="color:red; cursor:pointer;" onclick="removeFromCart(${index})">
+                    <span class="material-icons" style="font-size:18px">delete</span>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+    if (totalEl) totalEl.innerText = 'S/ ' + total.toFixed(2);
+
+    // Mobile Sticky Update
+    if (stickyContainer) {
+        stickyContainer.innerHTML = cart.map(i => `<span class="badge">${i.quantity}x ${i.name.substring(0, 5)}..</span>`).join(' ');
+    }
+    if (stickyTotalEl) stickyTotalEl.innerText = 'Total: S/ ' + total.toFixed(2);
+}
+
+async function submitOrder() {
+    if (cart.length === 0) return alert("El carrito esta vacio");
+    if (!currentTableId) return alert("Selecciona una mesa primero");
+
+    const btn = document.querySelector('.btn-submit-order');
+    if (btn) { btn.disabled = true; btn.innerText = "Enviando..."; }
+
+    // Payload
+    const orderData = {
+        table_number: currentTableId,
+        waiter_id: currentUser ? currentUser.id : 'unknown',
+        total: cart.reduce((acc, item) => acc + (item.price * item.quantity), 0),
+        items: cart.map(i => ({
+            id: i.id,
+            name: i.name,
+            price: i.price,
+            quantity: i.quantity
+        }))
+    };
+
+    const res = await apiCall('createOrder', { orderData: orderData }, 'POST');
+
+    if (res.success) {
+        alert("Pedido enviado a Cocina!");
+        cart = [];
+        updateCartUI();
+        showView('tables'); // Return to tables
+        apiCall('getSyncData', { role: 'mozo' }).then(updateLocalState);
+    } else {
+        alert("Error: " + res.error);
+    }
+
+    if (btn) { btn.disabled = false; btn.innerText = "Enviar a Cocina"; }
+}
+
 // Cart Logic Re-implementation (Simplified)
 function addToCart(product) {
     // ... existing logic in browser? No, I overwrote it.
