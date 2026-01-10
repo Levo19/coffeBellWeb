@@ -1011,7 +1011,7 @@ function renderCashierFromState() {
     // Split orders
     const allOrders = AppState.orders || [];
     const pending = allOrders.filter(o => o.status !== 'paid' && o.status !== 'cancelled').reverse();
-    const paidToday = allOrders.filter(o => o.status === 'paid').reverse();
+    const paidToday = allOrders.filter(o => o.status === 'paid'); // Backend already sends only recent/today items for cashier
 
     // Clear Container
     container.innerHTML = '';
@@ -1429,19 +1429,23 @@ async function updateOrderStatus(id, status, btnElement) {
         if (status === 'cooking') {
             const card = btnElement.closest('.card');
             if (card) {
-                card.style.borderLeft = '5px solid #2196F3'; // Blue
+                card.style.borderLeft = '6px solid #2196F3'; // Blue
+                card.style.transition = 'all 0.3s';
+                card.style.backgroundColor = '#E3F2FD'; // Slight blue tint
+
                 // Replace buttons with Badge
                 const actionDiv = btnElement.parentElement;
                 if (actionDiv) {
                     actionDiv.innerHTML = `
-                        <span class="badge" style="background:#2196F3; color:white; margin-right:10px;">⏳ Iniciando...</span>
+                        <span class="badge" style="background:#2196F3; color:white; padding:8px 12px; border-radius:12px;">👨‍🍳 En Preparación...</span>
                         <button class="btn btn-sm btn-primary" disabled>✅ Listo</button>
-                     `;
+                    `;
                 }
             }
-        } else {
-            // If "Ready", show loader
-            btnElement.innerText = "⏳ ...";
+        } else if (status === 'ready') {
+            // If "Ready", show success state
+            btnElement.innerHTML = "✅ Enviando...";
+            btnElement.style.backgroundColor = '#2ecc71';
         }
     }
 
