@@ -115,7 +115,8 @@ async function apiCall(action, payload = {}, method = 'GET') {
     }
 }
 
-// ... (skipping lines) ...
+// End of apiCall
+
 
 async function manageRecipeUi(prodId, prodName) {
     // Show loading modal first to prevent multiple clicks / lag
