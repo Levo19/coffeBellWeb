@@ -990,14 +990,14 @@ async function changeReportPeriod(period) {
 
 // Ensure other missing functions are stubbed or implemented if they were lost
 function renderKitchenFromState() {
-    const container = document.getElementById('kitchen-grid');
+    const container = document.getElementById('kitchen-board');
     if (!container) return;
     const orders = AppState.orders.filter(o => o.status === 'pending' || o.status === 'cooking').reverse();
     renderOrderCards(container, orders, 'kitchen');
 }
 
 function renderCashierFromState() {
-    const tableBody = document.getElementById('cashier-orders-list');
+    const tableBody = document.getElementById('cashier-list');
     if (!tableBody) return;
     const orders = AppState.orders.filter(o => o.status !== 'paid').reverse();
     tableBody.innerHTML = '';
@@ -1006,6 +1006,7 @@ function renderCashierFromState() {
         tr.innerHTML = `
             <td>${o.id.slice(-4)}</td>
             <td>Mesa ${o.table_number}</td>
+            <td>${o.waiter_id || 'Mozo'}</td>
             <td>S/ ${Number(o.total).toFixed(2)}</td>
             <td><span class="badge" style="background:${o.status === 'pending' ? 'orange' : 'blue'}">${o.status}</span></td>
             <td><button class="btn btn-sm" onclick="payOrder('${o.id}')">Cobrar</button></td>
