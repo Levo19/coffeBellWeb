@@ -59,6 +59,7 @@ function updateLocalState(data) {
     const activeView = document.querySelector('.view-section.active');
     if (activeView) {
         const id = activeView.id;
+        if (id === 'view-dashboard') renderDashboardFromState();
         if (id === 'view-tables') renderTablesFromState();
         if (id === 'view-kitchen') renderKitchenFromState();
         if (id === 'view-cashier') renderCashierFromState();
@@ -306,6 +307,7 @@ function showView(viewName) {
     if (target) target.classList.add('active');
 
     // Immediate Render from Cache
+    if (viewName === 'dashboard') renderDashboardFromState();
     if (viewName === 'tables') renderTablesFromState();
     if (viewName === 'kitchen') renderKitchenFromState();
     if (viewName === 'cashier') renderCashierFromState();
@@ -328,6 +330,43 @@ function showView(viewName) {
 }
 
 // --- RENDERING ---
+
+function renderDashboardFromState() {
+    const salesEl = document.getElementById('dash-sales');
+    const ordersEl = document.getElementById('dash-orders');
+    const tablesEl = document.getElementById('dash-tables');
+    if (!salesEl) return;
+
+    const now = new Date();
+    const todayDate = now.getDate();
+    const todayMonth = now.getMonth();
+    const todayYear = now.getFullYear();
+
+    const orders = AppState.orders || [];
+    // Filter for "Today" using local browser time vs order time
+    // Note: created_at string from Sheet might be UTC or ISO. Date(string) usually handles it.
+    const todaysOrders = orders.filter(o => {
+        const d = new Date(o.created_at);
+        return d.getDate() === todayDate && d.getMonth() === todayMonth && d.getFullYear() === todayYear;
+    });
+
+    // Sales = Sum of Paid Totals Today
+    const sales = todaysOrders.reduce((sum, o) => {
+        return (o.status === 'paid') ? sum + Number(o.total || 0) : sum;
+    }, 0);
+
+    // Orders = Count of Today's Orders (All valid)
+    const count = todaysOrders.filter(o => o.status !== 'cancelled').length;
+
+    // Active Tables
+    const tables = AppState.tables || [];
+    // In renderTablesFromState, it checks `t.status === 'free'`
+    const activeTables = tables.filter(t => t.status !== 'free').length;
+
+    salesEl.innerText = 'S/ ' + sales.toFixed(2);
+    ordersEl.innerText = count;
+    tablesEl.innerText = activeTables;
+}
 
 function renderTablesFromState() {
     const container = document.getElementById('tables-grid');
