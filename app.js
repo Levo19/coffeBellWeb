@@ -1207,88 +1207,8 @@ async function submitOrder() {
     if (btn) { btn.disabled = false; btn.innerText = "Enviar a Cocina"; }
 }
 
-// Cart Logic Re-implementation (Simplified)
-function addToCart(product) {
-    // ... existing logic in browser? No, I overwrote it.
-    // Need to restore cart logic.
-    let item = currentCart.find(i => i.id === product.id);
-    if (item) item.quantity++;
-    else currentCart.push({ ...product, quantity: 1 });
-    updateCartUI();
-}
-function updateCartUI() {
-    const list = document.getElementById('cart-items');
-    const totalEl = document.getElementById('cart-total');
-    if (!list || !totalEl) return;
 
-    list.innerHTML = '';
-    let total = 0;
-    currentCart.forEach((item, idx) => {
-        total += item.price * item.quantity;
-        const li = document.createElement('div');
-        li.style.display = 'flex'; li.style.justifyContent = 'space-between'; li.style.padding = '5px 0'; li.style.borderBottom = '1px solid #eee';
-        li.innerHTML = `
-            <span>${item.quantity}x ${item.name}</span>
-            <span>S/ ${(item.price * item.quantity).toFixed(2)} <span style="color:red; cursor:pointer; margin-left:5px;" onclick="removeFromCart(${idx})">&times;</span></span>
-        `;
-        list.appendChild(li);
-    });
-    totalEl.innerText = total.toFixed(2);
-
-    // Sticky Cart
-    const stickyQty = document.getElementById('sticky-cart-items');
-    const stickyTotal = document.getElementById('sticky-cart-total');
-    const stickyBar = document.querySelector('.cart-sticky-bar');
-
-    if (stickyQty && stickyTotal && stickyBar) {
-        const count = currentCart.reduce((a, b) => a + b.quantity, 0);
-        stickyQty.innerText = count + " items";
-        stickyTotal.innerText = "S/ " + total.toFixed(2);
-        stickyBar.style.display = count > 0 ? 'flex' : 'none';
-    }
-}
-window.removeFromCart = function (idx) {
-    currentCart.splice(idx, 1);
-    updateCartUI();
-};
-window.submitOrder = async function () {
-    if (currentCart.length === 0) return alert("Carrito vacío");
-
-    let tableId = currentTableId;
-    if (!tableId) {
-        tableId = prompt("Confirma número de mesa:", "1");
-    }
-    if (!tableId) return;
-
-    const waiterId = currentUser ? currentUser.username : 'mozo';
-
-    const total = currentCart.reduce((a, b) => a + b.price * b.quantity, 0);
-    const orderData = {
-        table_number: tableId,
-        waiter_id: waiterId,
-        total: total,
-        items: currentCart
-    };
-
-    const btn = document.querySelector('.btn-submit-order');
-    if (btn) { btn.disabled = true; btn.innerText = "Enviando..."; }
-
-    const res = await apiCall('createOrder', { orderData: orderData }, 'POST');
-
-    if (btn) { btn.disabled = false; btn.innerText = "Enviar a Cocina"; }
-
-    if (res.success) {
-        alert("Orden enviada a Cocina 👨‍🍳");
-        currentCart = [];
-        updateCartUI();
-        showView('tables'); // Return to tables
-    } else {
-        alert("Error: " + res.error);
-    }
-};
-
+// End of App Logic
 function refreshDashboard() {
     apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
 }
-// End of App Logic
-function refreshDashboard() { /* ... kept from previous ... */ }
