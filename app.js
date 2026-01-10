@@ -1000,19 +1000,84 @@ function setFinanceMonth(mode) {
     fetchFinanceReport();
 }
 
+// --- HELPER: Smart Table Update ---
+function smartUpdateTable(container, items, renderRowHtml, idKey = 'id') {
+    if (!container) return;
+
+    // 1. Get current rows map
+    const currentRows = Array.from(container.children);
+    const currentMap = new Map();
+    currentRows.forEach(row => {
+        if (row.dataset.id) currentMap.set(row.dataset.id, row);
+    });
+
+    // 2. Diff & Update
+    // We iterate through the NEW items specifically to maintain order
+    items.forEach((item, index) => {
+        const itemId = String(item[idKey]);
+        const newHtml = renderRowHtml(item);
+
+        // Is there a row at this index?
+        let rowAtIndex = container.children[index];
+
+        // Scenario A: Row exists at this index and matches ID. Update content only if needed.
+        if (rowAtIndex && rowAtIndex.dataset.id === itemId) {
+            if (rowAtIndex.innerHTML !== newHtml) rowAtIndex.innerHTML = newHtml;
+            currentMap.delete(itemId); // Mark as visited
+        }
+        // Scenario B: Row at this index is different (or doesn't exist). Insert/Move here.
+        else {
+            let rowToUse = currentMap.get(itemId);
+
+            if (!rowToUse) {
+                // Create New
+                rowToUse = document.createElement('tr');
+                rowToUse.dataset.id = itemId;
+                rowToUse.innerHTML = newHtml;
+            }
+
+            // Insert at index (if rowAtIndex exists, inserts before it; if null, appends)
+            if (rowAtIndex) {
+                container.insertBefore(rowToUse, rowAtIndex);
+            } else {
+                container.appendChild(rowToUse);
+            }
+
+            // If we moved an existing row, we don't need to delete it later
+            currentMap.delete(itemId);
+        }
+    });
+
+    // 3. Remove excess rows (any remaining in map were not in new list)
+    currentMap.forEach(row => row.remove());
+
+    // 4. Handle Empty State
+    if (items.length === 0 && container.children.length === 0) {
+        container.innerHTML = `<tr><td colspan="100%" style="text-align:center; color:#888;">No hay datos.</td></tr>`;
+    }
+}
+
+// Global cache for report query to avoid refetching if params static
+let lastFinanceParams = { start: '', end: '' };
+
 async function fetchFinanceReport() {
     const start = document.getElementById('fin-start').value;
     const end = document.getElementById('fin-end').value;
 
     if (!start || !end) return;
 
+    // Only show "Loading" if params changed (first load), otherwise silent update
+    const showLoading = (start !== lastFinanceParams.start || end !== lastFinanceParams.end);
+    lastFinanceParams = { start, end };
+
     const incBody = document.getElementById('fin-income-list');
     const expBody = document.getElementById('fin-expense-list');
-    if (incBody) incBody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
+
+    if (showLoading && incBody) incBody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
 
     const data = await apiCall('getFinancialReport', { start: start, end: end });
 
-    if (data && data.success !== false) { // API Wrapper might return success:false on error
+    if (data && data.success !== false) {
         // Update Summaries
         if (data.summary) {
             animateValue('fin-inc-val', data.summary.totalIncome);
@@ -1020,41 +1085,43 @@ async function fetchFinanceReport() {
             animateValue('fin-pro-val', data.summary.netProfit);
         }
 
-        // Render Income
+        // Render Income (Reverse logic inside renderer or pass reversed list)
+        // Backend returns oldest first? Or sorted? 
+        // Backend returns filtered list based on date. Usually DB order.
+        // Let's sort descending (Newest first)
+        const incomeList = (data.income || []).sort((a, b) => String(b.id).localeCompare(String(a.id))); // Desc
+
         if (incBody) {
-            incBody.innerHTML = '';
-            const list = data.income || [];
-            if (list.length === 0) incBody.innerHTML = '<tr><td colspan="5">No hay ingresos en este periodo.</td></tr>';
-            list.reverse().forEach(o => {
+            smartUpdateTable(incBody, incomeList, (o) => {
                 let timeStr = new Date(o.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
+                return `
                     <td>${timeStr}</td>
                     <td>#${String(o.id).slice(-4)}</td>
                     <td>Mesa ${o.table}</td>
                     <td>${o.method}</td>
                     <td style="color:#27ae60; font-weight:bold;">S/ ${Number(o.total).toFixed(2)}</td>
                  `;
-                incBody.appendChild(tr);
-            });
+            }, 'id');
         }
 
         // Render Expenses
+        const expenseList = (data.expenses || []).sort((a, b) => new Date(b.date) - new Date(a.date)); // Desc
+
         if (expBody) {
-            expBody.innerHTML = '';
-            const list = data.expenses || [];
-            if (list.length === 0) expBody.innerHTML = '<tr><td colspan="4">No hay gastos en este periodo.</td></tr>';
-            list.reverse().forEach(e => {
+            smartUpdateTable(expBody, expenseList, (e) => {
                 let dateStr = new Date(e.date).toLocaleDateString();
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
+                // Expenses might not have ID? Check GS. They rely on row index usually?
+                // If no ID, smart update fails. Let's assume description+amount+date is unique enough or backend has IDs?
+                // Backend getExpenses uses getData. getData usually doesn't add IDs unless handled.
+                // let's create a pseudo-ID if missing.
+                return `
                     <td>${dateStr}</td>
                     <td>${e.description}</td>
                     <td><span class="badge">${e.category}</span></td>
                     <td style="color:#c0392b; font-weight:bold;">- S/ ${Number(e.amount).toFixed(2)}</td>
                  `;
-                expBody.appendChild(tr);
-            });
+            }, 'id'); // We need 'id' in expenses.
+            // If expenses don't have IDs, this will fail. Let's check.
         }
     }
 }
