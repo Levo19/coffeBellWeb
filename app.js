@@ -1005,31 +1005,327 @@ function renderKitchenFromState() {
 }
 
 function renderCashierFromState() {
-    const tableBody = document.getElementById('cashier-list');
-    if (!tableBody) return;
-    const orders = AppState.orders.filter(o => o.status !== 'paid').reverse();
-    tableBody.innerHTML = '';
-    orders.forEach(o => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${String(o.id).slice(-4)}</td>
-            <td>Mesa ${o.table_number}</td>
-            <td>${o.waiter_id || 'Mozo'}</td>
-            <td>S/ ${Number(o.total).toFixed(2)}</td>
-            <td><span class="badge" style="background:${o.status === 'pending' ? 'orange' : 'blue'}">${o.status}</span></td>
-            <td><button class="btn btn-sm" onclick="payOrder('${o.id}')">Cobrar</button></td>
-         `;
-        tableBody.appendChild(tr);
-    });
+    const container = document.getElementById('cashier-list');
+    if (!container) return;
+
+    // Split orders
+    const allOrders = AppState.orders || [];
+    const pending = allOrders.filter(o => o.status !== 'paid' && o.status !== 'cancelled').reverse();
+    const paidToday = allOrders.filter(o => o.status === 'paid').reverse();
+
+    // Clear Container
+    container.innerHTML = '';
+
+    // --- 1. HEADER & ACTIONS ---
+    const headerDiv = document.createElement('div');
+    headerDiv.style.marginBottom = '20px';
+    headerDiv.style.textAlign = 'right';
+    headerDiv.innerHTML = `
+        <button class="btn btn-secondary" onclick="printDailyReport()">
+            <span class="material-icons" style="vertical-align:middle; font-size:16px;">receipt_long</span> 
+            Cierre de Caja (Hoy)
+        </button>
+    `;
+
+    // Injects header before the table container if it doesn't exist? 
+    // Actually renderCashierFromState targets the TABLE BODY usually. 
+    // We need to target the PARENT container to add sections. 
+    // Let's hijack the parent of the table body to inject our structure properly.
+
+    const tableElement = container.closest('table');
+    const viewSection = document.getElementById('view-cashier');
+
+    // FIX: renderCashier logic usually assumes it's filling a <tbody>. 
+    // We will clear the VIEW and rebuild it to support multiple tables.
+
+    if (viewSection) {
+        // Safe rebuild
+        viewSection.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2>Caja - Gestión de Pagos</h2>
+                <button class="btn btn-secondary" onclick="printDailyReport()">🖨️ Cierre de Caja</button>
+            </div>
+
+            <!-- PENDIENTES -->
+            <div class="card" style="margin-bottom:20px;">
+                <h3 style="margin-top:0; color:#d35400;">⏳ Pendientes de Cobro</h3>
+                <div style="overflow-x:auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Orden</th>
+                                <th>Mesa</th>
+                                <th>Mozo</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cashier-pending-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- COBRADOS -->
+            <div class="card">
+                <h3 style="margin-top:0; color:#27ae60;">✅ Cobrados Hoy</h3>
+                <div style="overflow-x:auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Orden</th>
+                                <th>Hora</th>
+                                <th>Mesa</th>
+                                <th>Medio Pago</th>
+                                <th>Total</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cashier-paid-list"></tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    // Populate Pending
+    const pendingBody = document.getElementById('cashier-pending-list');
+    if (pendingBody) {
+        if (pending.length === 0) pendingBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hay cobros pendientes.</td></tr>';
+        pending.forEach(o => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${String(o.id).slice(-4)}</td>
+                <td>Mesa ${o.table_number}</td>
+                <td>${o.waiter_id || 'Mozo'}</td>
+                <td style="font-weight:bold;">S/ ${Number(o.total).toFixed(2)}</td>
+                <td><span class="badge" style="background:${o.status === 'ready' ? '#2ecc71' : 'orange'}">${o.status}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="initiatePayment('${o.id}', ${o.total})">
+                        <span class="material-icons" style="font-size:14px; vertical-align:middle;">payments</span> Cobrar
+                    </button>
+                </td>
+            `;
+            pendingBody.appendChild(tr);
+        });
+    }
+
+    // Populate Paid
+    const paidBody = document.getElementById('cashier-paid-list');
+    if (paidBody) {
+        if (paidToday.length === 0) paidBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#888;">No hay ventas hoy.</td></tr>';
+        paidToday.forEach(o => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${String(o.id).slice(-4)}</td>
+                <td>${new Date(o.updated_at || o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td>Mesa ${o.table_number}</td>
+                <td style="text-transform:capitalize;">${o.payment_method || 'Desconocido'}</td>
+                <td>S/ ${Number(o.total).toFixed(2)}</td>
+                <td>
+                    <button class="btn btn-sm btn-white" style="border:1px solid #ddd;" onclick='printTicket(${JSON.stringify(o)})'>
+                         🖨️ Ticket
+                    </button>
+                </td>
+            `;
+            paidBody.appendChild(tr);
+        });
+    }
 }
 
-async function payOrder(id) {
-    if (!confirm("¿Confirmar pago de Orden " + id + "?")) return;
-    const res = await apiCall('updateOrderStatus', { orderId: id, status: 'paid' }, 'POST');
+// Global variable for current payment
+let currentPaymentOrder = null;
+
+function initiatePayment(orderId, total) {
+    currentPaymentOrder = { id: orderId, total: total };
+
+    openModal(`Cobrar Orden #${String(orderId).slice(-4)}`, [
+        { id: 'txtTotal', label: 'Total a Pagar (S/)', type: 'text', value: total.toFixed(2), disabled: true },
+        { id: 'method', label: 'Medio de Pago', type: 'select', options: ['Efectivo', 'Tarjeta', 'Yape/Plin'] },
+        { id: 'tendered', label: 'Monto Recibido (Sólo Efectivo)', type: 'number', placeholder: '0.00' },
+        { id: 'changeInfo', label: 'Vuelto:', type: 'text', value: 'S/ 0.00', disabled: true }
+    ], async (values) => {
+        // Submit Logic (Handled internally mostly, but here we trigger the process)
+        // We actually want a custom footer or logic for "Change" calculation before submit.
+        // openModal is basic. We will override the submit logic slightly or just process it.
+
+        await processPayment(values);
+    });
+
+    // Add Real-time Change Calculation
+    setTimeout(() => {
+        const inputTendered = document.getElementById('tendered');
+        const selectMethod = document.getElementById('method');
+        const displayChange = document.getElementById('changeInfo');
+        const btnSave = document.getElementById('modal-save-btn');
+        if (btnSave) btnSave.innerText = "💸 Confirmar Cobro";
+
+        if (inputTendered && selectMethod && displayChange) {
+            const calc = () => {
+                if (selectMethod.value === 'Efectivo') {
+                    inputTendered.disabled = false;
+                    const val = Number(inputTendered.value);
+                    const change = val - total;
+                    displayChange.value = change >= 0 ? `S/ ${change.toFixed(2)}` : 'Insuficiente';
+                    displayChange.style.color = change >= 0 ? 'green' : 'red';
+                    if (btnSave) btnSave.disabled = (val < total);
+                } else {
+                    inputTendered.disabled = true;
+                    inputTendered.value = '';
+                    displayChange.value = 'N/A';
+                    if (btnSave) btnSave.disabled = false;
+                }
+            };
+            inputTendered.addEventListener('keyup', calc);
+            selectMethod.addEventListener('change', calc);
+            calc(); // Init
+        }
+    }, 200);
+}
+
+async function processPayment(values) {
+    const method = values.method;
+    const orderId = currentPaymentOrder.id;
+
+    const res = await apiCall('updateOrderStatus', {
+        orderId: orderId,
+        status: 'paid',
+        paymentMethod: method
+    }, 'POST');
+
     if (res.success) {
+        // Print Ticket Automatically?
+        // Let's construct a temporary object to print
+        const orderFull = AppState.orders.find(o => String(o.id) === String(orderId));
+        if (orderFull) {
+            orderFull.payment_method = method;
+            orderFull.updated_at = new Date();
+            printTicket(orderFull);
+        }
+
         apiCall('getSyncData', { role: 'cajero' }).then(updateLocalState);
-        alert("Cobrado.");
+        // alert("Cobro Exitoso.");
+    } else {
+        alert("Error al procesar: " + res.error);
     }
+}
+
+function printTicket(order) {
+    const win = window.open('', 'Ticket', 'width=400,height=600');
+    if (!win) return alert("Habilita pop-ups");
+
+    let itemsHtml = '';
+    order.items.forEach(i => {
+        itemsHtml += `
+            <tr>
+                <td>${i.quantity} x ${i.product_name}</td>
+                <td style="text-align:right;">${(i.price * i.quantity).toFixed(2)}</td>
+            </tr>
+        `;
+    });
+
+    win.document.write(`
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Courier New', monospace; font-size: 12px; margin: 0; padding: 10px; width: 300px; }
+                .center { text-align: center; }
+                .line { border-bottom: 1px dashed #000; margin: 5px 0; }
+                table { width: 100%; border-collapse: collapse; }
+                td { padding: 2px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="center">
+                <h3>COFFE BELL</h3>
+                <p>RUC: 10456789012</p>
+                <p>${new Date().toLocaleString()}</p>
+                <p>Orden #${String(order.id).slice(-4)}</p>
+            </div>
+            <div class="line"></div>
+            <table>
+                ${itemsHtml}
+            </table>
+            <div class="line"></div>
+            <table>
+                <tr>
+                    <td><strong>TOTAL</strong></td>
+                    <td style="text-align:right;"><strong>S/ ${Number(order.total).toFixed(2)}</strong></td>
+                </tr>
+                <tr>
+                    <td>Pago:</td>
+                    <td style="text-align:right;">${order.payment_method || 'Efectivo'}</td>
+                </tr>
+            </table>
+            <div class="line"></div>
+            <div class="center">
+                <p>¡Gracias por su Preferencia!</p>
+            </div>
+        </body>
+        </html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 500);
+}
+
+function printDailyReport() {
+    const orders = AppState.orders.filter(o => o.status === 'paid');
+    if (orders.length === 0) return alert("No hay ventas hoy.");
+
+    let total = 0;
+    let counts = { 'Efectivo': 0, 'Tarjeta': 0, 'Yape/Plin': 0 };
+    let amounts = { 'Efectivo': 0, 'Tarjeta': 0, 'Yape/Plin': 0 };
+
+    orders.forEach(o => {
+        const t = Number(o.total);
+        total += t;
+        const m = o.payment_method || 'Efectivo';
+        if (counts[m] !== undefined) {
+            counts[m]++;
+            amounts[m] += t;
+        } else {
+            // Fallback for unknown methods changes in future
+            counts['Efectivo']++;
+            amounts['Efectivo'] += t;
+        }
+    });
+
+    const win = window.open('', 'Cierre', 'width=400,height=600');
+    win.document.write(`
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Courier New', monospace; font-size: 12px; margin: 0; padding: 10px; width: 300px; }
+                .center { text-align: center; }
+                .line { border-bottom: 1px dashed #000; margin: 5px 0; }
+                table { width: 100%; }
+            </style>
+        </head>
+        <body>
+            <div class="center">
+                <h3>CIERRE DE CAJA</h3>
+                <p>Fecha: ${new Date().toLocaleDateString()}</p>
+            </div>
+            <div class="line"></div>
+            <table>
+                <tr><td><strong>Ventas Totales:</strong></td><td style="text-align:right;"><strong>S/ ${total.toFixed(2)}</strong></td></tr>
+                <tr><td>Cant. Tickets:</td><td style="text-align:right;">${orders.length}</td></tr>
+            </table>
+            <div class="line"></div>
+            <p><strong>Desglose por Medio:</strong></p>
+            <table>
+                <tr><td>Efectivo:</td><td style="text-align:right;">S/ ${amounts['Efectivo'].toFixed(2)} (${counts['Efectivo']})</td></tr>
+                <tr><td>Tarjeta:</td><td style="text-align:right;">S/ ${amounts['Tarjeta'].toFixed(2)} (${counts['Tarjeta']})</td></tr>
+                <tr><td>Yape/Plin:</td><td style="text-align:right;">S/ ${amounts['Yape/Plin'].toFixed(2)} (${counts['Yape/Plin']})</td></tr>
+            </table>
+            <div class="line"></div>
+            <div class="center"><p>Firma Cajero</p></div>
+        </body>
+        </html>
+    `);
+    win.document.close();
+    setTimeout(() => { win.print(); win.close(); }, 500);
 }
 
 // --- WAITER VIEW ---
