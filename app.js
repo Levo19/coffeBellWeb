@@ -1421,17 +1421,35 @@ function renderOrderCards(container, orders, mode) {
 }
 
 async function updateOrderStatus(id, status, btnElement) {
-    // Immediate UI Feedback
+    // 1. Optimistic UI Update (Immediate)
     if (btnElement) {
         btnElement.disabled = true;
-        const originalText = btnElement.innerText;
-        btnElement.innerText = "⏳ ...";
+
+        // If "Cocinar" -> Change Card Style immediately
+        if (status === 'cooking') {
+            const card = btnElement.closest('.card');
+            if (card) {
+                card.style.borderLeft = '5px solid #2196F3'; // Blue
+                // Replace buttons with Badge
+                const actionDiv = btnElement.parentElement;
+                if (actionDiv) {
+                    actionDiv.innerHTML = `
+                        <span class="badge" style="background:#2196F3; color:white; margin-right:10px;">⏳ Iniciando...</span>
+                        <button class="btn btn-sm btn-primary" disabled>✅ Listo</button>
+                     `;
+                }
+            }
+        } else {
+            // If "Ready", show loader
+            btnElement.innerText = "⏳ ...";
+        }
     }
 
+    // 2. Network Call
     const res = await apiCall('updateOrderStatus', { orderId: id, status: status }, 'POST');
 
+    // 3. Sync
     if (res.success) {
-        // Optimistic update often better, but let's re-fetch to be safe and sync
         apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
     } else {
         alert("Error: " + res.error);
