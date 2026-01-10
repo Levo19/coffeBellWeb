@@ -98,14 +98,99 @@ async function apiCall(action, payload = {}, method = 'GET') {
         if (query) url += `&${query}`;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s Timeout
+    options.signal = controller.signal;
+
     try {
         const response = await fetch(url, options);
+        clearTimeout(timeoutId);
         const text = await response.text();
         try { return JSON.parse(text); }
         catch (e) { console.error("API Error", text); throw new Error("Respuesta inválida servidor"); }
     } catch (error) {
+        clearTimeout(timeoutId);
         if (action !== 'getSyncData') alert("Error de Conexión: " + error.message);
         return { error: error.message };
+    }
+}
+
+// ... (skipping lines) ...
+
+async function manageRecipeUi(prodId, prodName) {
+    // Show loading modal first to prevent multiple clicks / lag
+    openModal(`Receta: ${prodName}`, [
+        { id: 'loading', label: 'Cargando ingredientes...', type: 'text', disabled: true, placeholder: 'Espere por favor...' }
+    ], async () => { });
+
+    // Disable the button to prevent click-through
+    const saveBtn = document.getElementById('modal-save-btn');
+    if (saveBtn) saveBtn.style.display = 'none';
+
+    // Fetch Recipe
+    const recipe = await apiCall('getRecipe', { productId: prodId });
+
+    // Build the Real Modal Content
+    let msg = `<ul style="padding-left:20px; margin-bottom:20px;">`;
+    if (recipe && recipe.length > 0) {
+        recipe.forEach(r => {
+            msg += `<li><b>${r.ingredient_name}</b>: ${r.quantity} ${r.unit} 
+            <span style="color:red; cursor:pointer; font-size:12px; margin-left:10px;" onclick="deleteRecipeItem('${prodId}', '${r.ingredient_id}')">[Eliminar]</span></li>`;
+        });
+    } else {
+        msg += "<li>(Sin ingredientes definidos)</li>";
+    }
+    msg += "</ul>";
+
+    // Explanation for Bottled Drinks
+    msg += `<div style="background:#fff3e0; padding:10px; border-radius:8px; margin-bottom:15px; font-size:11px; line-height:1.4;">
+    <b>Importante:</b> Selecciona el insumo de almacén que se descontará al vender este plato.
+    </div>`;
+
+    // Dropdown for adding items
+    const inventory = AppState.inventory || [];
+    const options = inventory.map(i => `${i.name} (${i.id})`);
+
+    // Re-open modal with actual content
+    openModal(`Receta: ${prodName}`, [
+        { id: 'itemStr', label: 'Agregar Insumo (Seleccionar)', type: 'select', options: ['--', ...options] },
+        { id: 'qty', label: 'Cantidad a descontar por plato', type: 'number', placeholder: '0.00' }
+    ], async (values) => {
+        if (values.itemStr === '--') throw new Error("Selecciona un insumo válido.");
+        if (!values.qty || Number(values.qty) <= 0) throw new Error("Ingresa una cantidad válida.");
+
+        // Safe ID Extraction
+        const match = values.itemStr.match(/\(([^)]+)\)$/);
+        if (!match) throw new Error("Error al identificar el insumo. Intenta recargar.");
+        const ingId = match[1];
+
+        const res = await apiCall('addRecipeItem', {
+            productId: prodId,
+            ingredientId: ingId,
+            quantity: values.qty
+        }, 'POST');
+
+        if (res.success) {
+            // SUCCESS HANDLER
+            // We want to refresh the modal. 
+            // openModal's built-in .then() will try to close the modal.
+            // To avoid flickering or race conditions, we can let it close and immediately re-open.
+
+            // Return true/void to let the caller finish.
+            setTimeout(() => {
+                manageRecipeUi(prodId, prodName);
+            }, 300); // Small delay to allow fade-out/close
+        } else {
+            throw new Error("Error al guardar: " + (res.error || 'Desconocido'));
+        }
+    });
+
+    // Inject List
+    const body = document.getElementById('modal-body');
+    if (body) {
+        const div = document.createElement('div');
+        div.innerHTML = msg;
+        body.prepend(div);
     }
 }
 
