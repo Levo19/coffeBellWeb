@@ -440,7 +440,7 @@ function renderInventoryFromState() {
         tr.appendChild(tdStatus);
         tr.appendChild(tdAction); // Actions
 
-        tableBody.appendChild(tr);
+        tbody.appendChild(tr);
     });
 
     // Ensure header has actions column
