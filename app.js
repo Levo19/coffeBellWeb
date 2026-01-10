@@ -38,6 +38,15 @@ async function prefetchData() {
 }
 
 function updateLocalState(data) {
+    // DEBUG LOGGING
+    console.log("=== SYNC DEBUG ===");
+    console.log("Role Sent by Frontend:", currentUser ? currentUser.role : 'No User');
+    console.log("Role Received by Backend:", data.debug_role);
+    console.log("Orders Returned:", data.debug_orders_count);
+    console.log("Paid Orders in List:", (data.orders || []).filter(o => o.status === 'paid').length);
+    console.log("Raw Orders:", data.orders);
+    console.log("==================");
+
     if (data.tables) AppState.tables = data.tables;
     if (data.products) AppState.products = data.products;
     if (data.orders) AppState.orders = data.orders;
