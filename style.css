@@ -390,10 +390,9 @@ select {
   animation: fadeIn 0.3s forwards;
 }
 
-.modal-content {
+.modal-container {
   background: #ffffff !important;
   /* Force Solid White */
-  /* Solid White */
   padding: 30px;
   border-radius: 24px;
   width: 90%;
