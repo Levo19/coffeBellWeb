@@ -1421,45 +1421,44 @@ function renderOrderCards(container, orders, mode) {
 }
 
 async function updateOrderStatus(id, status, btnElement) {
-    // 1. Optimistic UI Update (Immediate)
-    if (btnElement) {
-        btnElement.disabled = true;
+    console.log(`[Optimistic] Updating Order ${id} to ${status}`);
 
-        // If "Cocinar" -> Change Card Style immediately
-        if (status === 'cooking') {
-            const card = btnElement.closest('.card');
-            if (card) {
-                card.style.borderLeft = '6px solid #2196F3'; // Blue
-                card.style.transition = 'all 0.3s';
-                card.style.backgroundColor = '#E3F2FD'; // Slight blue tint
+    // 1. STATE-BASED OPTIMISTIC UPDATE
+    const orderIndex = AppState.orders.findIndex(o => String(o.id) === String(id));
+    let originalStatus = null;
 
-                // Replace buttons with Badge
-                const actionDiv = btnElement.parentElement;
-                if (actionDiv) {
-                    actionDiv.innerHTML = `
-                        <span class="badge" style="background:#2196F3; color:white; padding:8px 12px; border-radius:12px;">👨‍🍳 En Preparación...</span>
-                        <button class="btn btn-sm btn-primary" disabled>✅ Listo</button>
-                    `;
-                }
-            }
-        } else if (status === 'ready') {
-            // If "Ready", show success state
-            btnElement.innerHTML = "✅ Enviando...";
-            btnElement.style.backgroundColor = '#2ecc71';
+    if (orderIndex !== -1) {
+        originalStatus = AppState.orders[orderIndex].status;
+        AppState.orders[orderIndex].status = status; // Mutate State
+
+        // Force Re-render based on new state
+        if (currentUser && currentUser.role === 'cocina') {
+            renderKitchenFromState();
+        } else if (currentUser && currentUser.role === 'cajero') {
+            renderCashierFromState();
         }
     }
 
     // 2. Network Call
-    const res = await apiCall('updateOrderStatus', { orderId: id, status: status }, 'POST');
+    try {
+        const res = await apiCall('updateOrderStatus', { orderId: id, status: status }, 'POST');
+        if (!res.success) throw new Error(res.error);
 
-    // 3. Sync
-    if (res.success) {
-        apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
-    } else {
-        alert("Error: " + res.error);
-        if (btnElement) {
-            btnElement.disabled = false;
-            btnElement.innerText = "Reintentar";
+        // 3. Sync on Success (to get any other changes)
+        // We delay slightly to ensure backend consistency, but UI is already updated.
+        setTimeout(() => {
+            apiCall('getSyncData', { role: currentUser.role }).then(updateLocalState);
+        }, 500);
+
+    } catch (err) {
+        console.error("Update failed, reverting:", err);
+        alert("Error al actualizar: " + err.message);
+
+        // Revert State
+        if (orderIndex !== -1 && originalStatus) {
+            AppState.orders[orderIndex].status = originalStatus;
+            if (currentUser.role === 'cocina') renderKitchenFromState();
+            if (currentUser.role === 'cajero') renderCashierFromState();
         }
     }
 }
