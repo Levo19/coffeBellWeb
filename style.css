@@ -391,7 +391,8 @@ select {
 }
 
 .modal-content {
-  background: var(--white);
+  background: #ffffff !important;
+  /* Force Solid White */
   /* Solid White */
   padding: 30px;
   border-radius: 24px;
