@@ -522,8 +522,333 @@ function closeModal() {
 // ... helper functions for tables, kitchen, cashier render ...
 function renderKitchenFromState() { /* ... kept from previous ... */ }
 function renderCashierFromState() { /* ... kept from previous ... */ }
-function renderFinanceFromState() { /* ... kept from previous ... */ }
-function renderReportsFromState() { /* ... kept from previous ... */ }
+// --- FINANCE ---
+function renderFinanceFromState() {
+    // Triggered dynamically above
+}
+// --- REPORTS ---
+function renderReportsFromState() {
+    const container = document.getElementById('view-reports');
+    if (!container) return;
+
+    const stats = AppState.stats;
+    if (!stats) {
+        container.innerHTML = '<div style="padding:20px;">Cargando estadísticas...</div>';
+        return;
+    }
+
+    // Check if we already rendered the structure
+    let content = container.querySelector('.report-content');
+    if (!content) {
+        container.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2>Inteligencia de Negocio</h2>
+                <select id="report-period-select" class="form-control" style="width:150px;" onchange="changeReportPeriod(this.value)">
+                    <option value="today">Hoy</option>
+                    <option value="week">Última Semana</option>
+                    <option value="month">Último Mes</option>
+                    <option value="all">Todo el tiempo</option>
+                </select>
+            </div>
+            <div class="report-content">
+                <div class="card" style="margin-bottom:20px;">
+                    <h3>Top 5 Productos Más Vendidos</h3>
+                    <div id="top-products-chart"></div>
+                </div>
+                <div class="card">
+                    <h3>Rendimiento del Personal</h3>
+                    <div id="waiter-performance-chart"></div>
+                </div>
+            </div>
+        `;
+        // Set selected value based on current stats if available, or default
+        const sel = document.getElementById('report-period-select');
+        if (sel && stats.period) sel.value = stats.period;
+    }
+
+    // Render Top Products
+    const prodContainer = document.getElementById('top-products-chart');
+    if (prodContainer) {
+        if (stats.topProducts.length === 0) {
+            prodContainer.innerHTML = '<p style="color:#888; font-style:italic;">No hay datos para este periodo.</p>';
+        } else {
+            let html = '<table class="table" style="width:100%"><tr><th>Producto</th><th>Cantidad</th></tr>';
+            stats.topProducts.forEach(p => {
+                html += `<tr><td>${p.name}</td><td>${p.qty}</td></tr>`;
+            });
+            html += '</table>';
+            prodContainer.innerHTML = html;
+        }
+    }
+
+    // Render Waiter Performance
+    const waiterContainer = document.getElementById('waiter-performance-chart');
+    if (waiterContainer) {
+        if (stats.waiterPerformance.length === 0) {
+            waiterContainer.innerHTML = '<p style="color:#888; font-style:italic;">No hay datos para este periodo.</p>';
+        } else {
+            let html = '<table class="table" style="width:100%"><tr><th>Mozo</th><th>Ventas (S/)</th><th>Pedidos</th></tr>';
+            stats.waiterPerformance.forEach(w => {
+                html += `<tr><td>${w.waiter || 'Sin Asignar'}</td><td>S/ ${Number(w.total).toFixed(2)}</td><td>${w.count}</td></tr>`;
+            });
+            html += '</table>';
+            waiterContainer.innerHTML = html;
+        }
+    }
+}
+
+async function changeReportPeriod(period) {
+    const btn = document.getElementById('report-period-select');
+    if (btn) btn.disabled = true;
+
+    // We need to fetch sync data regarding this period
+    // We update the local AppState with the new period's stats
+    const data = await apiCall('getSyncData', { role: 'admin', period: period });
+    if (data) {
+        updateLocalState(data);
+        renderReportsFromState();
+    }
+
+    if (btn) btn.disabled = false;
+}
+
+// Ensure other missing functions are stubbed or implemented if they were lost
+function renderKitchenFromState() {
+    const container = document.getElementById('kitchen-grid');
+    if (!container) return;
+    const orders = AppState.orders.filter(o => o.status === 'pending' || o.status === 'cooking').reverse();
+    renderOrderCards(container, orders, 'kitchen');
+}
+
+function renderCashierFromState() {
+    const tableBody = document.getElementById('cashier-orders-list');
+    if (!tableBody) return;
+    const orders = AppState.orders.filter(o => o.status !== 'paid').reverse();
+    tableBody.innerHTML = '';
+    orders.forEach(o => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${o.id.slice(-4)}</td>
+            <td>Mesa ${o.table_number}</td>
+            <td>S/ ${Number(o.total).toFixed(2)}</td>
+            <td><span class="badge" style="background:${o.status === 'pending' ? 'orange' : 'blue'}">${o.status}</span></td>
+            <td><button class="btn btn-sm" onclick="payOrder('${o.id}')">Cobrar</button></td>
+         `;
+        tableBody.appendChild(tr);
+    });
+}
+
+async function payOrder(id) {
+    if (!confirm("¿Confirmar pago de Orden " + id + "?")) return;
+    const res = await apiCall('updateOrderStatus', { orderId: id, status: 'paid' }, 'POST');
+    if (res.success) {
+        apiCall('getSyncData', { role: 'cajero' }).then(updateLocalState);
+        alert("Cobrado.");
+    }
+}
+
+function renderProductsFromState() {
+    // Waiter View - already handled by generic logic? 
+    // Wait, waiter view needs to render Product Cards to clicking.
+    // The "renderProductsFromState" name suggests Admin Products, but checking line 60:
+    // "if (id === 'view-waiter') renderProductsFromState();" 
+    // Ah, "renderProductsFromState" was likely for the Waiter's Product Grid (Menu).
+    // "renderAdminProductsFromState" is for the admin table.
+    // Let's implement the Waiter Menu Grid here.
+
+    const container = document.getElementById('products-grid');
+    if (!container) return;
+    const products = AppState.products;
+    container.innerHTML = '';
+
+    products.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'product-card';
+        div.innerHTML = `
+            <div style="font-weight:bold;">${p.name}</div>
+            <div style="color:#666; font-size:12px;">${p.category}</div>
+            <div style="color:#d35400; font-weight:bold; margin-top:5px;">S/ ${p.price}</div>
+         `;
+        div.onclick = () => addToCart(p);
+        container.appendChild(div);
+    });
+}
+
+function renderOrderCards(container, orders, mode) {
+    container.innerHTML = '';
+    orders.forEach(o => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.style.marginBottom = '10px';
+        div.style.borderLeft = mode === 'kitchen' ? '5px solid orange' : '5px solid #ccc';
+
+        let itemsHtml = '';
+        o.items.forEach(i => itemsHtml += `<li>${i.quantity}x ${i.product_name}</li>`);
+
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between;">
+                <b>Mesa ${o.table_number}</b>
+                <span style="font-size:12px; color:#888;">${new Date(o.created_at).toLocaleTimeString()}</span>
+            </div>
+            <ul style="margin:10px 0; padding-left:20px;">${itemsHtml}</ul>
+            <div style="text-align:right;">
+                ${mode === 'kitchen' ?
+                `<button class="btn btn-sm" onclick="updateOrderStatus('${o.id}', 'cooking')">Cocinar</button>
+                   <button class="btn btn-sm btn-primary" onclick="updateOrderStatus('${o.id}', 'ready')">Listo</button>`
+                : ''}
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+async function updateOrderStatus(id, status) {
+    await apiCall('updateOrderStatus', { orderId: id, status: status }, 'POST');
+    apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
+}
+
+// Cart Logic Re-implementation (Simplified)
+function addToCart(product) {
+    // ... existing logic in browser? No, I overwrote it.
+    // Need to restore cart logic.
+    let item = currentCart.find(i => i.id === product.id);
+    if (item) item.quantity++;
+    else currentCart.push({ ...product, quantity: 1 });
+    updateCartUI();
+}
+function updateCartUI() {
+    const list = document.getElementById('cart-items');
+    const totalEl = document.getElementById('cart-total');
+    if (!list || !totalEl) return;
+
+    list.innerHTML = '';
+    let total = 0;
+    currentCart.forEach((item, idx) => {
+        total += item.price * item.quantity;
+        const li = document.createElement('div');
+        li.style.display = 'flex'; li.style.justifyContent = 'space-between'; li.style.padding = '5px 0'; li.style.borderBottom = '1px solid #eee';
+        li.innerHTML = `
+            <span>${item.quantity}x ${item.name}</span>
+            <span>S/ ${(item.price * item.quantity).toFixed(2)} <span style="color:red; cursor:pointer; margin-left:5px;" onclick="removeFromCart(${idx})">&times;</span></span>
+        `;
+        list.appendChild(li);
+    });
+    totalEl.innerText = total.toFixed(2);
+
+    // Sticky Cart
+    const stickyQty = document.getElementById('sticky-cart-items');
+    const stickyTotal = document.getElementById('sticky-cart-total');
+    const stickyBar = document.querySelector('.cart-sticky-bar');
+
+    if (stickyQty && stickyTotal && stickyBar) {
+        const count = currentCart.reduce((a, b) => a + b.quantity, 0);
+        stickyQty.innerText = count + " items";
+        stickyTotal.innerText = "S/ " + total.toFixed(2);
+        stickyBar.style.display = count > 0 ? 'flex' : 'none';
+    }
+}
+window.removeFromCart = function (idx) {
+    currentCart.splice(idx, 1);
+    updateCartUI();
+};
+window.submitOrder = async function () {
+    if (currentCart.length === 0) return alert("Carrito vacío");
+    // Mock user/table
+    const tableId = prompt("Número de Mesa (ID):", "1");
+    if (!tableId) return;
+
+    // NOTE: In real app, waiter is logged in.
+    const waiterId = currentUser ? currentUser.username : 'mozo';
+
+    const total = currentCart.reduce((a, b) => a + b.price * b.quantity, 0);
+    const orderData = {
+        table_number: tableId,
+        waiter_id: waiterId,
+        total: total,
+        items: currentCart
+    };
+
+    // Optimistic UI could go here
+    const res = await apiCall('createOrder', { orderData: orderData }, 'POST');
+    if (res.success) {
+        alert("Orden enviada!");
+        currentCart = [];
+        updateCartUI();
+        apiCall('getSyncData', { role: 'mozo' }).then(updateLocalState);
+    } else {
+        alert("Error: " + res.error);
+    }
+};
+
+function refreshDashboard() {
+    apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+}
 function renderProductsFromState() { /* ... kept from previous ... */ }
-function registerExpense() { /* ... kept from previous ... */ }
+async function registerExpense() {
+    openModal("Registrar Gasto", [
+        { id: 'desc', label: 'Descripción', type: 'text', placeholder: 'Ej: Pago Luz' },
+        { id: 'amount', label: 'Monto (S/)', type: 'number', placeholder: '0.00' },
+        { id: 'cat', label: 'Categoría', type: 'select', options: ['Servicios', 'Insumos', 'Personal', 'Mantenimiento', 'Otros'] }
+    ], async (values) => {
+        const payload = {
+            description: values.desc,
+            amount: Number(values.amount),
+            category: values.cat,
+            userId: currentUser ? currentUser.id : 'unknown'
+        };
+        const res = await apiCall('registerExpense', { expenseData: payload }, 'POST');
+        if (res.success) {
+            alert("Gasto registrado");
+            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+        } else {
+            throw new Error(res.error);
+        }
+    });
+}
+
+function renderFinanceFromState() {
+    const expenses = AppState.expenses || [];
+    const orders = AppState.orders || [];
+
+    // Calculate Totals
+    let totalSales = 0;
+    orders.forEach(o => { if (o.status === 'paid') totalSales += Number(o.total || 0); });
+
+    let totalExpenses = 0;
+    expenses.forEach(e => { totalExpenses += Number(e.amount || 0); });
+
+    const profit = totalSales - totalExpenses;
+
+    // Update Cards
+    const incEl = document.getElementById('fin-income');
+    const expEl = document.getElementById('fin-expenses');
+    const proEl = document.getElementById('fin-profit');
+
+    if (incEl) incEl.innerText = 'S/ ' + totalSales.toFixed(2);
+    if (expEl) expEl.innerText = 'S/ ' + totalExpenses.toFixed(2);
+    if (proEl) proEl.innerText = 'S/ ' + profit.toFixed(2);
+
+    // Render Expense List
+    const tbody = document.getElementById('expenses-list');
+    if (!tbody) return;
+
+    if (expenses.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4">No hay gastos registrados</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = '';
+    // Show last 10 expenses descending
+    const sorted = [...expenses].reverse().slice(0, 10);
+    sorted.forEach(e => {
+        const tr = document.createElement('tr');
+        const dateStr = new Date(e.date).toLocaleDateString();
+        tr.innerHTML = `
+            <td>${dateStr}</td>
+            <td>${e.description}</td>
+            <td><span class="badge">${e.category}</span></td>
+            <td style="color:red; font-weight:bold;">- S/ ${Number(e.amount).toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
 function refreshDashboard() { /* ... kept from previous ... */ }
