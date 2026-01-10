@@ -1570,3 +1570,101 @@ async function submitOrder() {
 function refreshDashboard() {
     apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
 }
+
+// ==========================================
+// GENERIC MODAL LOGIC
+// ==========================================
+function openModal(title, fields, onSave) {
+    const overlay = document.getElementById('generic-modal');
+    const titleEl = document.getElementById('modal-title');
+    const bodyEl = document.getElementById('modal-body');
+    const saveBtn = document.getElementById('modal-save-btn');
+
+    if (!overlay) return;
+
+    // Reset Display
+    overlay.style.display = 'flex';
+    titleEl.innerText = title;
+    bodyEl.innerHTML = '';
+
+    // Build Form
+    fields.forEach(f => {
+        const div = document.createElement('div');
+        div.style.marginBottom = '15px';
+
+        const label = document.createElement('label');
+        label.innerText = f.label;
+        label.style.display = 'block';
+        label.style.fontWeight = 'bold';
+        label.style.marginBottom = '5px';
+
+        div.appendChild(label);
+
+        let input;
+        if (f.type === 'select') {
+            input = document.createElement('select');
+            input.className = 'form-control';
+            f.options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.innerText = opt;
+                input.appendChild(o);
+            });
+        } else {
+            input = document.createElement('input');
+            input.type = f.type;
+            input.className = 'form-control';
+            if (f.placeholder) input.placeholder = f.placeholder;
+            if (f.value) input.value = f.value;
+            if (f.disabled) input.disabled = true;
+        }
+        input.id = f.id;
+        div.appendChild(input);
+        bodyEl.appendChild(div);
+    });
+
+    // Save Action
+    saveBtn.onclick = () => {
+        const values = {};
+        let valid = true;
+        fields.forEach(f => {
+            const el = document.getElementById(f.id);
+            if (el) values[f.id] = el.value;
+        });
+
+        if (valid) {
+            const originalText = saveBtn.innerText;
+            saveBtn.innerText = "Guardando...";
+            saveBtn.disabled = true;
+
+            // Wrap in promise if not already
+            const promise = onSave(values);
+            Promise.resolve(promise).then(() => {
+                closeModal();
+                saveBtn.innerText = originalText;
+                saveBtn.disabled = false;
+            }).catch(err => {
+                alert("Error: " + err);
+                saveBtn.innerText = originalText;
+                saveBtn.disabled = false;
+            });
+        }
+    };
+}
+
+function closeModal() {
+    const overlay = document.getElementById('generic-modal');
+    if (overlay) {
+        overlay.style.display = 'none';
+        // Cleanup content
+        document.getElementById('modal-body').innerHTML = '';
+    }
+}
+
+// Ensure close button works
+window.onclick = function (event) {
+    const overlay = document.getElementById('generic-modal');
+    if (event.target == overlay) {
+        closeModal();
+    }
+}
