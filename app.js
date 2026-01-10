@@ -1014,90 +1014,69 @@ function renderKitchenFromState() {
 }
 
 function renderCashierFromState() {
-    const container = document.getElementById('cashier-list');
-    if (!container) return;
-
-    // Split orders
-    const allOrders = AppState.orders || [];
-    const pending = allOrders.filter(o => o.status !== 'paid' && o.status !== 'cancelled').reverse();
-    const paidToday = allOrders.filter(o => o.status === 'paid'); // Backend already sends only recent/today items for cashier
-
-    // Clear Container
-    container.innerHTML = '';
-
-    // --- 1. HEADER & ACTIONS ---
-    const headerDiv = document.createElement('div');
-    headerDiv.style.marginBottom = '20px';
-    headerDiv.style.textAlign = 'right';
-    headerDiv.innerHTML = `
-        <button class="btn btn-secondary" onclick="printDailyReport()">
-            <span class="material-icons" style="vertical-align:middle; font-size:16px;">receipt_long</span> 
-            Cierre de Caja (Hoy)
-        </button>
-    `;
-
-    // Injects header before the table container if it doesn't exist? 
-    // Actually renderCashierFromState targets the TABLE BODY usually. 
-    // We need to target the PARENT container to add sections. 
-    // Let's hijack the parent of the table body to inject our structure properly.
-
-    const tableElement = container.closest('table');
-    const viewSection = document.getElementById('view-cashier');
-
-    // FIX: renderCashier logic usually assumes it's filling a <tbody>. 
-    // We will clear the VIEW and rebuild it to support multiple tables.
-
-    if (viewSection) {
-        // Safe rebuild
-        viewSection.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <h2>Caja - Gestión de Pagos</h2>
-                <button class="btn btn-secondary" onclick="printDailyReport()">🖨️ Cierre de Caja</button>
-            </div>
-
-            <!-- PENDIENTES -->
-            <div class="card" style="margin-bottom:20px;">
-                <h3 style="margin-top:0; color:#d35400;">⏳ Pendientes de Cobro</h3>
-                <div style="overflow-x:auto;">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Orden</th>
-                                <th>Mesa</th>
-                                <th>Mozo</th>
-                                <th>Total</th>
-                                <th>Estado</th>
-                                <th>Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody id="cashier-pending-list"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- COBRADOS -->
-            <div class="card">
-                <h3 style="margin-top:0; color:#27ae60;">✅ Cobrados Hoy</h3>
-                <div style="overflow-x:auto;">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Orden</th>
-                                <th>Hora</th>
-                                <th>Mesa</th>
-                                <th>Medio Pago</th>
-                                <th>Total</th>
-                                <th>Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody id="cashier-paid-list"></tbody>
-                    </table>
-                </div>
-            </div>
-        `;
+    console.log("DEBUG: Render Cashier Start");
+    const viewSection = document.getElementById('view-cashier'); // Target the VIEW directly
+    if (!viewSection) {
+        console.error("View Cashier NOT found");
+        return;
     }
 
-    // Populate Pending
+    const allOrders = AppState.orders || [];
+    const pending = allOrders.filter(o => o.status !== 'paid' && o.status !== 'cancelled').reverse();
+    // Normalize status check just in case
+    const paidToday = allOrders.filter(o => String(o.status).toLowerCase() === 'paid');
+
+    console.log(`Cashier Render: ${allOrders.length} total, ${pending.length} pending, ${paidToday.length} paid`);
+
+    // HACK: Rebuild the entire view content to ensure structure exists
+    viewSection.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2>Caja - Gestión de Pagos</h2>
+            <button class="btn btn-secondary" onclick="printDailyReport()">🖨️ Cierre de Caja</button>
+        </div>
+
+        <!-- PENDIENTES -->
+        <div class="card" style="margin-bottom:20px;">
+            <h3 style="margin-top:0; color:#d35400;">⏳ Pendientes de Cobro</h3>
+            <div style="overflow-x:auto;">
+                <table class="table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Orden</th>
+                            <th>Mesa</th>
+                            <th>Mozo</th>
+                            <th>Total</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cashier-pending-list"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- COBRADOS -->
+        <div class="card">
+            <h3 style="margin-top:0; color:#27ae60;">✅ Cobrados Hoy</h3>
+            <div style="overflow-x:auto;">
+                <table class="table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Orden</th>
+                            <th>Hora</th>
+                            <th>Mesa</th>
+                            <th>Medio Pago</th>
+                            <th>Total</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cashier-paid-list"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    // Render Pending
     const pendingBody = document.getElementById('cashier-pending-list');
     if (pendingBody) {
         if (pending.length === 0) pendingBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hay cobros pendientes.</td></tr>';
@@ -1119,18 +1098,21 @@ function renderCashierFromState() {
         });
     }
 
-    // Populate Paid
+    // Render Paid
     const paidBody = document.getElementById('cashier-paid-list');
     if (paidBody) {
         if (paidToday.length === 0) paidBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#888;">No hay ventas hoy.</td></tr>';
         paidToday.forEach(o => {
             const tr = document.createElement('tr');
+            let timeStr = "N/A";
+            try { timeStr = new Date(o.updated_at || o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { }
+
             tr.innerHTML = `
                 <td>${String(o.id).slice(-4)}</td>
-                <td>${new Date(o.updated_at || o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td>${timeStr}</td>
                 <td>Mesa ${o.table_number}</td>
-                <td style="text-transform:capitalize;">${o.payment_method || 'Desconocido'}</td>
-                <td>S/ ${Number(o.total).toFixed(2)}</td>
+                <td><span class="badge" style="background:#eee; color:#333;">${o.payment_method || 'N/A'}</span></td>
+                <td style="font-weight:bold; color:#27ae60;">S/ ${Number(o.total).toFixed(2)}</td>
                 <td>
                     <button class="btn btn-sm btn-white" style="border:1px solid #ddd;" onclick='printTicket(${JSON.stringify(o)})'>
                          🖨️ Ticket
