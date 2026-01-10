@@ -1012,7 +1012,7 @@ function renderCashierFromState() {
     orders.forEach(o => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${o.id.slice(-4)}</td>
+            <td>${String(o.id).slice(-4)}</td>
             <td>Mesa ${o.table_number}</td>
             <td>${o.waiter_id || 'Mozo'}</td>
             <td>S/ ${Number(o.total).toFixed(2)}</td>
