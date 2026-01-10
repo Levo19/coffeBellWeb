@@ -1180,17 +1180,6 @@ function renderReportsFromState() {
                 </div>
             </div>
             
-            <!-- HISTORY SECTION -->
-            <div class="card" style="margin-top:20px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3>📜 Historial de Tickets</h3>
-                    <div style="display:flex; gap:10px;">
-                        <input type="date" id="history-date-picker" class="form-control" style="width:160px;">
-                        <button class="btn btn-primary" onclick="fetchHistory()">Buscar</button>
-                    </div>
-                </div>
-                <div id="history-results" style="margin-top:10px; max-height:300px; overflow-y:auto;">
-                    <p style="color:#888;">Selecciona una fecha para ver los tickets.</p>
                 </div>
             </div>
         `;
@@ -1392,6 +1381,22 @@ function renderCashierFromState() {
                 </table>
             </div>
         </div>
+
+        ${(currentUser && currentUser.role === 'admin') ? `
+        <!-- HISTORIAL (ADMIN ONLY) -->
+        <div class="card" style="margin-top:20px; border-left:5px solid #2c3e50;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+                <h3>📜 Historial de Ventas (Admin)</h3>
+                <div style="display:flex; gap:8px;">
+                    <input type="date" id="history-date-picker" class="form-control" style="width:150px;">
+                    <button class="btn btn-primary" onclick="fetchHistory()">Buscar</button>
+                </div>
+            </div>
+            <div id="history-results" style="margin-top:15px; max-height:400px; overflow-y:auto; border-top:1px solid #eee; padding-top:10px;">
+                <p style="color:#888; font-style:italic;">Selecciona una fecha para consultar el historial de ventas pasadas.</p>
+            </div>
+        </div>
+        ` : ''}
     `;
 
     // Render Pending
