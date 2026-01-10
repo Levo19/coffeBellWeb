@@ -128,9 +128,12 @@ async function attemptLogin() {
 
 function logout() { location.reload(); }
 
+let currentTableId = null;
+
 function setupUIForRole(role) {
     document.querySelectorAll('.nav-group').forEach(el => el.style.display = 'none');
 
+    // Desktop Nav
     if (role === 'admin') {
         document.getElementById('nav-admin').style.display = 'block';
         showView('dashboard');
@@ -145,6 +148,39 @@ function setupUIForRole(role) {
     } else if (role === 'cajero') {
         document.getElementById('nav-caja').style.display = 'block';
         showView('cashier');
+    }
+
+    // Mobile Nav Logic (Filter items)
+    const mobItems = document.querySelectorAll('.mobile-nav-item');
+    if (mobItems.length > 0) {
+        // Reset all
+        mobItems.forEach(i => i.style.display = 'flex');
+
+        if (role === 'mozo') {
+            // Hide Kitchen (index 1) and Cashier (index 2)?
+            // Structure: [Mesas, Cocina, Caja, Salir]
+            if (mobItems[1]) mobItems[1].style.display = 'none'; // Cocina
+            if (mobItems[2]) mobItems[2].style.display = 'none'; // Caja
+        }
+        if (role === 'cocina') {
+            if (mobItems[0]) mobItems[0].style.display = 'none'; // Mesas
+            if (mobItems[2]) mobItems[2].style.display = 'none'; // Caja
+        }
+        if (role === 'cajero') {
+            if (mobItems[1]) mobItems[1].style.display = 'none'; // Cocina
+        }
+    }
+}
+
+function handleTableClick(id) {
+    currentTableId = id;
+    showView('waiter');
+
+    // Update Select in Waiter View
+    const sel = document.getElementById('table-select');
+    if (sel) {
+        sel.innerHTML = `<option value="${id}" selected>Mesa ${id}</option>`;
+        // Optionally populate with all tables if needed, but for now lock to selection
     }
 }
 
@@ -166,7 +202,13 @@ function showView(viewName) {
     if (viewName === 'finance') renderFinanceFromState();
     if (viewName === 'products') renderAdminProductsFromState();
     if (viewName === 'reports') renderReportsFromState();
-    if (viewName === 'waiter') renderProductsFromState();
+    if (viewName === 'waiter') {
+        renderProductsFromState();
+        if (currentTableId) {
+            const sel = document.getElementById('table-select');
+            if (sel) sel.value = currentTableId;
+        }
+    }
 }
 
 // --- RENDERING ---
@@ -752,11 +794,13 @@ window.removeFromCart = function (idx) {
 };
 window.submitOrder = async function () {
     if (currentCart.length === 0) return alert("Carrito vacío");
-    // Mock user/table
-    const tableId = prompt("Número de Mesa (ID):", "1");
+
+    let tableId = currentTableId;
+    if (!tableId) {
+        tableId = prompt("Confirma número de mesa:", "1");
+    }
     if (!tableId) return;
 
-    // NOTE: In real app, waiter is logged in.
     const waiterId = currentUser ? currentUser.username : 'mozo';
 
     const total = currentCart.reduce((a, b) => a + b.price * b.quantity, 0);
@@ -767,13 +811,18 @@ window.submitOrder = async function () {
         items: currentCart
     };
 
-    // Optimistic UI could go here
+    const btn = document.querySelector('.btn-submit-order');
+    if (btn) { btn.disabled = true; btn.innerText = "Enviando..."; }
+
     const res = await apiCall('createOrder', { orderData: orderData }, 'POST');
+
+    if (btn) { btn.disabled = false; btn.innerText = "Enviar a Cocina"; }
+
     if (res.success) {
-        alert("Orden enviada!");
+        alert("Orden enviada a Cocina 👨‍🍳");
         currentCart = [];
         updateCartUI();
-        apiCall('getSyncData', { role: 'mozo' }).then(updateLocalState);
+        showView('tables'); // Return to tables
     } else {
         alert("Error: " + res.error);
     }
