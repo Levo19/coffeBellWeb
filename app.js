@@ -1452,6 +1452,113 @@ async function processPayment(values) {
     }
 }
 
+function printDailyReport() {
+    console.log("Generating Daily Report...");
+
+    // 1. Filter Paid Orders
+    const orders = (AppState.orders || []).filter(o => String(o.status).toLowerCase() === 'paid');
+
+    // Sort logic: By ID (time roughly)
+    orders.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+    if (orders.length === 0) return alert("No hay ventas registradas hoy.");
+
+    let total = 0;
+    let counts = { 'Efectivo': 0, 'Tarjeta': 0, 'Yape/Plin': 0 };
+    let amounts = { 'Efectivo': 0, 'Tarjeta': 0, 'Yape/Plin': 0 };
+    let rowsHtml = '';
+
+    orders.forEach(o => {
+        const t = Number(o.total || 0);
+        total += t;
+        const m = o.payment_method || 'Efectivo';
+
+        // Count stats
+        if (counts[m] !== undefined) {
+            counts[m]++;
+            amounts[m] += t;
+        } else {
+            // Fallback for new methods if any
+            if (!counts['Otros']) { counts['Otros'] = 0; amounts['Otros'] = 0; }
+            counts['Otros']++;
+            amounts['Otros'] += t;
+        }
+
+        // Build Row
+        let timeStr = "N/A";
+        try { timeStr = new Date(o.updated_at || o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { }
+
+        rowsHtml += `
+            <tr>
+                <td>#${String(o.id).slice(-4)}</td>
+                <td>${timeStr}</td>
+                <td>Me-${o.table_number}</td>
+                <td>${m.substring(0, 3)}</td>
+                <td style="text-align:right;">${t.toFixed(2)}</td>
+            </tr>
+        `;
+    });
+
+    const win = window.open('', 'Cierre', 'width=400,height=800');
+    if (!win) return alert("Habilita Popups");
+
+    win.document.write(`
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Courier New', monospace; font-size: 11px; margin: 0; padding: 10px; width: 300px; }
+                .center { text-align: center; }
+                .line { border-bottom: 1px dashed #000; margin: 8px 0; }
+                table { width: 100%; border-collapse:collapse; }
+                td, th { padding: 2px 0; text-align:left; }
+                .summary-table td { font-size:12px; }
+            </style>
+        </head>
+        <body>
+            <div class="center">
+                <h3>CIERRE DE CAJA</h3>
+                <p>Fecha: ${new Date().toLocaleDateString()}</p>
+            </div>
+            
+            <div class="line"></div>
+            <p style="margin:5px 0;"><strong>DETALLE DE TICKETS</strong></p>
+            <table>
+                <tr>
+                    <th style="width:30px">ID</th>
+                    <th>Hora</th>
+                    <th>Mesa</th>
+                    <th>Med</th>
+                    <th style="text-align:right;">Total</th>
+                </tr>
+                ${rowsHtml}
+            </table>
+            
+            <div class="line"></div>
+            <p style="margin:5px 0;"><strong>RESUMEN</strong></p>
+            <table class="summary-table">
+                <tr><td><strong>Ventas Totales:</strong></td><td style="text-align:right;"><strong>S/ ${total.toFixed(2)}</strong></td></tr>
+                <tr><td>Cant. Tickets:</td><td style="text-align:right;">${orders.length}</td></tr>
+            </table>
+            
+            <div class="line"></div>
+            <p style="margin:5px 0;"><strong>POR MEDIO DE PAGO</strong></p>
+            <table>
+                ${Object.keys(counts).map(k =>
+        `<tr><td>${k}:</td><td style="text-align:right;">S/ ${amounts[k].toFixed(2)} (${counts[k]})</td></tr>`
+    ).join('')}
+            </table>
+            
+            <div class="line"></div>
+            <br><br>
+            <div class="center"><p>_______________________<br>Firma Cajero</p></div>
+        </body>
+        </html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 500);
+}
+
 function printTicket(order) {
     const win = window.open('', 'Ticket', 'width=400,height=600');
     if (!win) return alert("Habilita pop-ups");
