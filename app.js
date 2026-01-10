@@ -153,21 +153,34 @@ function setupUIForRole(role) {
     // Mobile Nav Logic (Filter items)
     const mobItems = document.querySelectorAll('.mobile-nav-item');
     if (mobItems.length > 0) {
-        // Reset all
+        // Reset all to flex first
         mobItems.forEach(i => i.style.display = 'flex');
 
+        // Structure based on HTML order:
+        // [0] = Mesas (table_restaurant)
+        // [1] = Cocina (soup_kitchen)
+        // [2] = Caja (point_of_sale)
+        // [3] = Salir (logout)
+
         if (role === 'mozo') {
-            // Hide Kitchen (index 1) and Cashier (index 2)?
-            // Structure: [Mesas, Cocina, Caja, Salir]
-            if (mobItems[1]) mobItems[1].style.display = 'none'; // Cocina
-            if (mobItems[2]) mobItems[2].style.display = 'none'; // Caja
+            // Mozo sees: Mesas [0], Salir [3]
+            // Hide: Cocina [1], Caja [2]
+            if (mobItems[1]) mobItems[1].style.display = 'none';
+            if (mobItems[2]) mobItems[2].style.display = 'none';
         }
+
         if (role === 'cocina') {
-            if (mobItems[0]) mobItems[0].style.display = 'none'; // Mesas
-            if (mobItems[2]) mobItems[2].style.display = 'none'; // Caja
+            // Cocina sees: Cocina [1], Salir [3]
+            // Hide: Mesas [0], Caja [2]
+            if (mobItems[0]) mobItems[0].style.display = 'none';
+            if (mobItems[2]) mobItems[2].style.display = 'none';
         }
+
         if (role === 'cajero') {
-            if (mobItems[1]) mobItems[1].style.display = 'none'; // Cocina
+            // Cajero sees: Caja [2], Salir [3]
+            // Hide: Mesas [0], Cocina [1]
+            if (mobItems[0]) mobItems[0].style.display = 'none';
+            if (mobItems[1]) mobItems[1].style.display = 'none';
         }
     }
 }
