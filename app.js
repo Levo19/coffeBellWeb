@@ -63,12 +63,14 @@ function updateLocalState(data) {
 
 function startSyncLoop(role) {
     if (AppState.syncInterval) clearInterval(AppState.syncInterval);
-    let interval = 4000;
+
+    // Critical roles need faster sync (2.5s), others can wait (8s)
+    let interval = (role === 'cocina' || role === 'cajero') ? 2500 : 8000;
 
     apiCall('getSyncData', { role: role }).then(updateLocalState);
     AppState.syncInterval = setInterval(async () => {
         const data = await apiCall('getSyncData', { role: role });
-        if (data) updateLocalState(data);
+        if (data && data.timestamp >= AppState.lastSync) updateLocalState(data);
     }, interval);
 }
 
@@ -294,11 +296,17 @@ function showView(viewName) {
     const target = document.getElementById('view-' + viewName);
     if (target) target.classList.add('active');
 
+    // Immediate Render from Cache
     if (viewName === 'tables') renderTablesFromState();
     if (viewName === 'kitchen') renderKitchenFromState();
     if (viewName === 'cashier') renderCashierFromState();
     if (viewName === 'inventory') renderInventoryFromState();
     if (viewName === 'finance') renderFinanceFromState();
+
+    // Trigger Background Refresh for "Instant" feel
+    if (currentUser) {
+        apiCall('getSyncData', { role: currentUser.role }).then(updateLocalState);
+    }
     if (viewName === 'products') renderAdminProductsFromState();
     if (viewName === 'reports') renderReportsFromState();
     if (viewName === 'waiter') {
@@ -1077,30 +1085,65 @@ function renderOrderCards(container, orders, mode) {
         const div = document.createElement('div');
         div.className = 'card';
         div.style.marginBottom = '10px';
-        div.style.borderLeft = mode === 'kitchen' ? '5px solid orange' : '5px solid #ccc';
+
+        // Colors: Pending (Orange), Cooking (Blue), Ready (Green - usually hidden here)
+        let borderColor = '#ccc';
+        if (mode === 'kitchen') {
+            borderColor = (o.status === 'cooking') ? '#2196F3' : '#FF9800'; // Blue vs Orange
+        }
+        div.style.borderLeft = `5px solid ${borderColor}`;
 
         let itemsHtml = '';
         o.items.forEach(i => itemsHtml += `<li>${i.quantity}x ${i.product_name}</li>`);
 
+        let actions = '';
+        if (mode === 'kitchen') {
+            if (o.status === 'pending') {
+                actions = `
+                    <button class="btn btn-sm" onclick="updateOrderStatus('${o.id}', 'cooking', this)">🔥 Cocinar</button>
+                    <button class="btn btn-sm btn-primary" onclick="updateOrderStatus('${o.id}', 'ready', this)">✅ Listo</button>
+                `;
+            } else if (o.status === 'cooking') {
+                actions = `
+                    <span class="badge" style="background:#2196F3; color:white; margin-right:10px;">En Preparación</span>
+                    <button class="btn btn-sm btn-primary" onclick="updateOrderStatus('${o.id}', 'ready', this)">✅ Listo</button>
+                 `;
+            }
+        }
+
         div.innerHTML = `
             <div style="display:flex; justify-content:space-between;">
                 <b>Mesa ${o.table_number}</b>
-                <span style="font-size:12px; color:#888;">${new Date(o.created_at).toLocaleTimeString()}</span>
+                <span style="font-size:12px; color:#888;">${new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
+            <div style="font-size:12px; margin-bottom:5px; color:#666; text-transform:uppercase; font-weight:bold;">${o.waiter_id || 'Mozo'}</div>
             <ul style="margin:10px 0; padding-left:20px;">${itemsHtml}</ul>
-            <div style="text-align:right;">
-                ${mode === 'kitchen' ?
-                `<button class="btn btn-sm" onclick="updateOrderStatus('${o.id}', 'cooking')">Cocinar</button>
-                   <button class="btn btn-sm btn-primary" onclick="updateOrderStatus('${o.id}', 'ready')">Listo</button>`
-                : ''}
-            </div>
+            <div style="text-align:right;">${actions}</div>
         `;
         container.appendChild(div);
     });
 }
-async function updateOrderStatus(id, status) {
-    await apiCall('updateOrderStatus', { orderId: id, status: status }, 'POST');
-    apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
+
+async function updateOrderStatus(id, status, btnElement) {
+    // Immediate UI Feedback
+    if (btnElement) {
+        btnElement.disabled = true;
+        const originalText = btnElement.innerText;
+        btnElement.innerText = "⏳ ...";
+    }
+
+    const res = await apiCall('updateOrderStatus', { orderId: id, status: status }, 'POST');
+
+    if (res.success) {
+        // Optimistic update often better, but let's re-fetch to be safe and sync
+        apiCall('getSyncData', { role: 'cocina' }).then(updateLocalState);
+    } else {
+        alert("Error: " + res.error);
+        if (btnElement) {
+            btnElement.disabled = false;
+            btnElement.innerText = "Reintentar";
+        }
+    }
 }
 
 // ==========================================
