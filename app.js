@@ -292,6 +292,29 @@ function renderAdminProductsFromState() {
 
 // --- ACTIONS ---
 
+async function addNewTable() {
+    openModal("Nueva Mesa", [
+        { id: 'label', label: 'Nombre de la Mesa', type: 'text', placeholder: 'Ej: Terraza 4' }
+    ], async (values) => {
+        const res = await apiCall('addTable', { label: values.label }, 'POST');
+        if (res.success) {
+            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+        } else {
+            throw new Error("Error al crear mesa");
+        }
+    });
+}
+
+async function deleteTableApi(id) {
+    if (!confirm("¿Eliminar esta mesa?")) return;
+    const res = await apiCall('deleteTable', { tableId: id }, 'POST');
+    if (res.success) {
+        apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+    } else {
+        alert("Error al eliminar");
+    }
+}
+
 async function addNewProductUi() {
     openModal("Nuevo Producto", [
         { id: 'name', label: 'Nombre del Producto', type: 'text', placeholder: 'Ej: Lomo Saltado' },
