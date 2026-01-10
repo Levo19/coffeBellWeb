@@ -392,6 +392,7 @@ select {
 
 .modal-content {
   background: var(--white);
+  /* Solid White */
   padding: 30px;
   border-radius: 24px;
   width: 90%;
@@ -399,6 +400,7 @@ select {
   box-shadow: var(--shadow-lg);
   transform: scale(0.9);
   animation: scaleUp 0.3s forwards;
+  z-index: 2001;
 }
 
 @keyframes scaleUp {
