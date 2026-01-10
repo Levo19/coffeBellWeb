@@ -703,24 +703,24 @@ async function payOrder(id) {
 }
 
 function renderProductsFromState() {
-    // Waiter View - already handled by generic logic? 
-    // Wait, waiter view needs to render Product Cards to clicking.
-    // The "renderProductsFromState" name suggests Admin Products, but checking line 60:
-    // "if (id === 'view-waiter') renderProductsFromState();" 
-    // Ah, "renderProductsFromState" was likely for the Waiter's Product Grid (Menu).
-    // "renderAdminProductsFromState" is for the admin table.
-    // Let's implement the Waiter Menu Grid here.
-
-    const container = document.getElementById('products-grid');
+    // Waiter View Product Grid
+    const container = document.getElementById('product-list');
     if (!container) return;
-    const products = AppState.products;
+
+    const products = AppState.products || [];
     container.innerHTML = '';
+
+    if (products.length === 0) {
+        container.innerHTML = '<div style="padding:20px; color:#888;">No hay productos disponibles.</div>';
+        return;
+    }
 
     products.forEach(p => {
         const div = document.createElement('div');
         div.className = 'product-card';
         div.innerHTML = `
-            <div style="font-weight:bold;">${p.name}</div>
+            <img src="${p.image_url || 'https://via.placeholder.com/100?text=CAFE'}" class="product-img" onerror="this.src='https://via.placeholder.com/100?text=No+Img'">
+            <div style="font-weight:bold; font-size:14px;">${p.name}</div>
             <div style="color:#666; font-size:12px;">${p.category}</div>
             <div style="color:#d35400; font-weight:bold; margin-top:5px;">S/ ${p.price}</div>
          `;
