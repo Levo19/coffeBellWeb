@@ -223,25 +223,31 @@ function renderInventoryFromState() {
     const tbody = document.getElementById('inventory-list');
     if (!tbody) return;
 
-    // Buttons
+    // Buttons - Strict Cleanup
+    const card = tbody.closest('.card');
+
+    // 1. Remove ANY old standalone buttons hanging around
+    const oldBtns = card.querySelectorAll('button');
+    oldBtns.forEach(b => {
+        if (b.parentNode.id !== 'inv-actions') b.remove();
+    });
+
+    // 2. Setup Container
     let btnContainer = document.getElementById('inv-actions');
     if (!btnContainer) {
-        const card = tbody.closest('.card');
-        if (card) {
-            btnContainer = document.createElement('div');
-            btnContainer.id = 'inv-actions';
-            btnContainer.style.marginBottom = '15px';
-            btnContainer.style.display = 'flex';
-            btnContainer.style.gap = '10px';
-            card.insertBefore(btnContainer, card.firstChild);
-        }
+        btnContainer = document.createElement('div');
+        btnContainer.id = 'inv-actions';
+        btnContainer.style.marginBottom = '15px';
+        btnContainer.style.display = 'flex';
+        btnContainer.style.gap = '10px';
+        if (card) card.insertBefore(btnContainer, card.firstChild);
     }
-    if (btnContainer) {
-        btnContainer.innerHTML = `
-            <button class="btn btn-primary" onclick="registerEntry()">+ Ingreso Stock</button>
-            <button class="btn btn-secondary" onclick="addNewIngredientUi()">+ Nuevo Insumo</button>
-        `;
-    }
+
+    // 3. Force Content
+    btnContainer.innerHTML = `
+        <button class="btn btn-primary" onclick="registerEntry()">+ Ingreso Stock</button>
+        <button class="btn btn-secondary" onclick="addNewIngredientUi()">+ Nuevo Insumo</button>
+    `;
 
     const items = AppState.inventory;
     if (!items || items.length === 0) {
