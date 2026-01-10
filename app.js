@@ -748,8 +748,73 @@ function closeModal() {
 function renderKitchenFromState() { /* ... kept from previous ... */ }
 function renderCashierFromState() { /* ... kept from previous ... */ }
 // --- FINANCE ---
+async function registerExpense() {
+    openModal("Registrar Gasto", [
+        { id: 'desc', label: 'Descripción', type: 'text', placeholder: 'Ej: Pago Luz' },
+        { id: 'amount', label: 'Monto (S/)', type: 'number', placeholder: '0.00' },
+        { id: 'cat', label: 'Categoría', type: 'select', options: ['Servicios', 'Insumos', 'Personal', 'Mantenimiento', 'Otros'] }
+    ], async (values) => {
+        const payload = {
+            description: values.desc,
+            amount: Number(values.amount),
+            category: values.cat,
+            userId: currentUser ? currentUser.id : 'unknown'
+        };
+        const res = await apiCall('registerExpense', { expenseData: payload }, 'POST');
+        if (res.success) {
+            alert("Gasto registrado");
+            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
+        } else {
+            throw new Error(res.error);
+        }
+    });
+}
+
 function renderFinanceFromState() {
-    // Triggered dynamically above
+    const expenses = AppState.expenses || [];
+    const orders = AppState.orders || [];
+
+    // Calculate Totals
+    let totalSales = 0;
+    orders.forEach(o => { if (o.status === 'paid') totalSales += Number(o.total || 0); });
+
+    let totalExpenses = 0;
+    expenses.forEach(e => { totalExpenses += Number(e.amount || 0); });
+
+    const profit = totalSales - totalExpenses;
+
+    // Update Cards
+    const incEl = document.getElementById('fin-income');
+    const expEl = document.getElementById('fin-expenses');
+    const proEl = document.getElementById('fin-profit');
+
+    if (incEl) incEl.innerText = 'S/ ' + totalSales.toFixed(2);
+    if (expEl) expEl.innerText = 'S/ ' + totalExpenses.toFixed(2);
+    if (proEl) proEl.innerText = 'S/ ' + profit.toFixed(2);
+
+    // Render Expense List
+    const tbody = document.getElementById('expense-list');
+    if (!tbody) return;
+
+    if (expenses.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4">No hay gastos registrados</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = '';
+    // Show last 10 expenses descending
+    const sorted = [...expenses].reverse().slice(0, 10);
+    sorted.forEach(e => {
+        const tr = document.createElement('tr');
+        const dateStr = new Date(e.date).toLocaleDateString();
+        tr.innerHTML = `
+            <td>${dateStr}</td>
+            <td>${e.description}</td>
+            <td><span class="badge">${e.category}</span></td>
+            <td style="color:red; font-weight:bold;">- S/ ${Number(e.amount).toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 // --- REPORTS ---
 function renderReportsFromState() {
@@ -1014,248 +1079,5 @@ window.submitOrder = async function () {
 function refreshDashboard() {
     apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
 }
-function renderProductsFromState() { /* ... kept from previous ... */ }
-async function registerExpense() {
-    openModal("Registrar Gasto", [
-        { id: 'desc', label: 'Descripción', type: 'text', placeholder: 'Ej: Pago Luz' },
-        { id: 'amount', label: 'Monto (S/)', type: 'number', placeholder: '0.00' },
-        { id: 'cat', label: 'Categoría', type: 'select', options: ['Servicios', 'Insumos', 'Personal', 'Mantenimiento', 'Otros'] }
-    ], async (values) => {
-        const payload = {
-            description: values.desc,
-            amount: Number(values.amount),
-            category: values.cat,
-            userId: currentUser ? currentUser.id : 'unknown'
-        };
-        const res = await apiCall('registerExpense', { expenseData: payload }, 'POST');
-        if (res.success) {
-            alert("Gasto registrado");
-            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
-        } else {
-            throw new Error(res.error);
-        }
-    });
-}
-
-function renderInventoryFromState() {
-    const tableBody = document.getElementById('inventory-list');
-    if (!tableBody) return;
-    const inventory = AppState.inventory;
-    if (!inventory) return;
-    tableBody.innerHTML = '';
-    inventory.forEach(item => {
-        const tr = document.createElement('tr');
-        const tdName = document.createElement('td');
-        tdName.innerHTML = `<div style="font-weight:bold">${item.name}</div>`;
-        const tdStock = document.createElement('td');
-        tdStock.innerText = item.stock;
-        const tdUnit = document.createElement('td');
-        tdUnit.innerText = item.unit;
-        const tdStatus = document.createElement('td');
-        if (item.stock <= item.min) {
-            tdStatus.innerHTML = '<span class="badge" style="background:red;">Bajo Stock</span>';
-        } else {
-            tdStatus.innerHTML = '<span class="badge" style="background:green;">Normal</span>';
-        }
-        const tdAction = document.createElement('td');
-
-        const button = document.createElement('button');
-        button.className = 'btn btn-sm';
-        button.innerText = 'Ingreso';
-        button.onclick = () => registerEntryForId(item.id, item.name);
-
-        const btnHist = document.createElement('button');
-        btnHist.className = 'btn btn-sm btn-white';
-        btnHist.style.border = '1px solid #ddd';
-        btnHist.innerHTML = '<span class="material-icons" style="font-size:14px; vertical-align:middle;">history</span>';
-        btnHist.onclick = () => viewInventoryHistory(item);
-
-        tdAction.appendChild(button);
-        tdAction.appendChild(document.createTextNode(' '));
-        tdAction.appendChild(btnHist);
-
-        tr.appendChild(tdName);
-        tr.appendChild(tdStock);
-        tr.appendChild(tdUnit);
-        tr.appendChild(tdStatus);
-        tr.appendChild(tdAction); // Added Actions column
-
-        tableBody.appendChild(tr);
-    });
-}
-
-async function viewInventoryHistory(item) {
-    openModal(`Historial: ${item.name}`, [
-        { id: 'loading', type: 'text', disabled: true, value: 'Cargando datos...', label: 'Estado' }
-    ], () => { }); // No save action
-
-    // Custom Modal Content Override
-    const modalBody = document.getElementById('modal-body');
-    modalBody.innerHTML = '<div style="text-align:center; padding:20px;">Cargando historial...</div>';
-
-    const logs = await apiCall('getInventoryLogs', { itemId: item.id });
-
-    if (!logs || logs.length === 0) {
-        modalBody.innerHTML = '<div style="padding:20px; text-align:center;">No hay historial disponible.</div>';
-        return;
-    }
-
-    let html = `
-        <div style="margin-bottom:15px; display:flex; justify-content:flex-end;">
-            <button class="btn btn-secondary" onclick='printHistoryTicket(${JSON.stringify(item)}, ${JSON.stringify(logs)})'>
-                <span class="material-icons" style="font-size:16px; vertical-align:middle;">print</span> Imprimir Ticket
-            </button>
-        </div>
-        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-            <thead style="background:#f5f5f5; border-bottom:1px solid #ddd;">
-                <tr>
-                    <th style="padding:5px; text-align:left;">Fecha</th>
-                    <th style="padding:5px; text-align:left;">Tipo</th>
-                    <th style="padding:5px; text-align:left;">Cant.</th>
-                    <th style="padding:5px; text-align:left;">Razón</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-
-    logs.forEach(l => {
-        const date = new Date(l.date).toLocaleString();
-        const color = l.type === 'IN' ? 'green' : 'red';
-        const sign = l.type === 'IN' ? '+' : '-';
-        html += `
-            <tr style="border-bottom:1px solid #eee;">
-                <td style="padding:8px 5px;">${date}</td>
-                <td style="padding:8px 5px; font-weight:bold; color:${color}">${l.type}</td>
-                <td style="padding:8px 5px;">${sign}${l.quantity}</td>
-                <td style="padding:8px 5px; color:#666;">${l.reason}</td>
-            </tr>
-        `;
-    });
-
-    html += '</tbody></table>';
-    modalBody.innerHTML = html;
-
-    // Hide Save Button
-    const saveBtn = document.getElementById('modal-save-btn');
-    if (saveBtn) saveBtn.style.display = 'none';
-}
-
-function printHistoryTicket(item, logs) {
-    const win = window.open('', '', 'width=400,height=600');
-    if (!win) return alert("Habilita los pop-ups para imprimir.");
-
-    const now = new Date().toLocaleString();
-    let rows = '';
-    logs.slice(0, 20).forEach(l => {
-        const sign = l.type === 'IN' ? '+' : '-';
-        const d = new Date(l.date);
-        const dateShort = `${d.getDate()}/${d.getMonth() + 1} ${d.getHours()}:${d.getMinutes()}`;
-        rows += `
-            <tr>
-                <td>${dateShort}</td>
-                <td>${l.type}</td>
-                <td style="text-align:right;">${sign}${l.quantity}</td>
-            </tr>
-            <tr>
-                <td colspan="3" style="font-size:10px; color:#555; padding-bottom:5px; border-bottom:1px dashed #ccc;">${l.reason}</td>
-            </tr>
-         `;
-    });
-
-    win.document.write(`
-        <html>
-        <head>
-            <style>
-                body { font-family: 'Courier New', monospace; font-size: 12px; margin: 0; padding: 10px; width: 300px; }
-                h2, h3 { text-align: center; margin: 5px 0; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                td { padding: 2px 0; }
-                .divider { border-top: 1px dashed #000; margin: 10px 0; }
-            </style>
-        </head>
-        <body>
-            <h2>COFFE BELL</h2>
-            <h3>Historial Stock</h3>
-            <p><strong>Item:</strong> ${item.name}</p>
-            <p><strong>Fecha Imp:</strong> ${now}</p>
-            <div class="divider"></div>
-            <table>
-                <tr>
-                    <th style="text-align:left;">Fecha</th>
-                    <th style="text-align:left;">Mov</th>
-                    <th style="text-align:right;">Cant</th>
-                </tr>
-                ${rows}
-            </table>
-            <div class="divider"></div>
-            <p style="text-align:center;">- Fin del Reporte -</p>
-        </body>
-        </html>
-    `);
-
-    win.document.close();
-    win.focus();
-    setTimeout(() => {
-        win.print();
-        win.close();
-    }, 500);
-}
-function registerEntryForId(itemId, itemName) {
-    openModal(`Ingreso de Mercadería: ${itemName}`, [
-        { id: 'qty', label: 'Cantidad a Agregar', type: 'number', placeholder: '0' }
-    ], async (values) => {
-        const res = await apiCall('updateInventory', { itemId: itemId, quantity: values.qty }, 'POST');
-        if (res.success) {
-            alert(`Actualizado. Nuevo Total: ${res.newStock}`);
-            apiCall('getSyncData', { role: 'admin' }).then(updateLocalState);
-        } else { throw new Error(res.error); }
-    });
-}
-
-function renderFinanceFromState() {
-    const expenses = AppState.expenses || [];
-    const orders = AppState.orders || [];
-
-    // Calculate Totals
-    let totalSales = 0;
-    orders.forEach(o => { if (o.status === 'paid') totalSales += Number(o.total || 0); });
-
-    let totalExpenses = 0;
-    expenses.forEach(e => { totalExpenses += Number(e.amount || 0); });
-
-    const profit = totalSales - totalExpenses;
-
-    // Update Cards
-    const incEl = document.getElementById('fin-income');
-    const expEl = document.getElementById('fin-expenses');
-    const proEl = document.getElementById('fin-profit');
-
-    if (incEl) incEl.innerText = 'S/ ' + totalSales.toFixed(2);
-    if (expEl) expEl.innerText = 'S/ ' + totalExpenses.toFixed(2);
-    if (proEl) proEl.innerText = 'S/ ' + profit.toFixed(2);
-
-    // Render Expense List
-    const tbody = document.getElementById('expense-list');
-    if (!tbody) return;
-
-    if (expenses.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4">No hay gastos registrados</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = '';
-    // Show last 10 expenses descending
-    const sorted = [...expenses].reverse().slice(0, 10);
-    sorted.forEach(e => {
-        const tr = document.createElement('tr');
-        const dateStr = new Date(e.date).toLocaleDateString();
-        tr.innerHTML = `
-            <td>${dateStr}</td>
-            <td>${e.description}</td>
-            <td><span class="badge">${e.category}</span></td>
-            <td style="color:red; font-weight:bold;">- S/ ${Number(e.amount).toFixed(2)}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
+// End of App Logic
 function refreshDashboard() { /* ... kept from previous ... */ }
