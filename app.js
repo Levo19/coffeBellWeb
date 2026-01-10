@@ -937,29 +937,49 @@ async function payOrder(id) {
     }
 }
 
+// --- WAITER VIEW ---
 function renderProductsFromState() {
-    // Waiter View Product Grid
     const container = document.getElementById('product-list');
     if (!container) return;
 
     const products = AppState.products || [];
+
+    // Debugging hint
+    // console.log("Rendering products:", products.length);
+
     container.innerHTML = '';
 
     if (products.length === 0) {
-        container.innerHTML = '<div style="padding:20px; color:#888;">No hay productos disponibles.</div>';
+        container.innerHTML = `
+            <div style="padding:20px; text-align:center; color:#888;">
+                <span class="material-icons" style="font-size:48px; color:#ddd;">restaurant_menu</span>
+                <p>No hay productos disponibles.</p>
+                <small>Agregalos desde el panel de Admin.</small>
+            </div>
+        `;
         return;
     }
 
     products.forEach(p => {
         const div = document.createElement('div');
         div.className = 'product-card';
-        div.innerHTML = `
-            <img src="${p.image_url || 'https://via.placeholder.com/100?text=CAFE'}" class="product-img" onerror="this.src='https://via.placeholder.com/100?text=No+Img'">
-            <div style="font-weight:bold; font-size:14px;">${p.name}</div>
-            <div style="color:#666; font-size:12px;">${p.category}</div>
-            <div style="color:#d35400; font-weight:bold; margin-top:5px;">S/ ${p.price}</div>
-         `;
+        div.style.cursor = 'pointer';
         div.onclick = () => addToCart(p);
+
+        const price = Number(p.price).toFixed(2);
+
+        div.innerHTML = `
+            <div style="height:80px; background:#f5f5f5; margin-bottom:10px; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+                <img src="${p.image_url || ''}" 
+                     style="width:100%; height:100%; object-fit:cover;" 
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block'">
+                <span class="material-icons" style="display:none; font-size:40px; color:#ccc;">image_not_supported</span>
+            </div>
+            <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${p.name}</div>
+            <div style="color:#666; font-size:12px; margin-bottom:8px;">${p.category}</div>
+            <div style="color:var(--primary); font-weight:bold;">S/ ${price}</div>
+            <button class="btn btn-sm btn-primary" style="width:100%; margin-top:8px;">Agregar</button>
+        `;
         container.appendChild(div);
     });
 }
